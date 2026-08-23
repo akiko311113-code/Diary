@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>日記帳</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📔</text></svg>">
+<style>
+  :root {
+    --bg-top: #fff7fa;
+    --bg-mid: #fef0f7;
+    --bg-bot: #fff9f0;
+    --card: #ffffff;
+    --text: #4a3b42;
+    --sub: #b08a97;
+    --accent: #ff7aa2;
+    --accent-dark: #e85a86;
+    --accent-garden: #5cb85c;
+    --accent-garden-dark: #3f9142;
+    --accent-review: #a78bfa;
+    --accent-backup: #7fa9d4;
+    --border: #ffe1ec;
+    --border-garden: #d9f0d9;
+    --danger: #f2545b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Hiragino Maru Gothic ProN", "UD Digi Kyokasho NK-R", "Yu Gothic", "Hiragino Sans", sans-serif;
+    color: var(--text);
+    background: linear-gradient(160deg, var(--bg-top), var(--bg-mid) 45%, var(--bg-bot) 100%);
+    background-attachment: fixed;
+    min-height: 100vh;
+  }
+  header { padding: 28px 16px 8px; text-align: center; }
+  header h1 { margin: 0; font-size: 1.7rem; letter-spacing: 0.04em; }
+  header p { margin: 6px 0 0; color: var(--sub); font-size: 0.85rem; }
+
+  .tabs {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 18px 16px 4px;
+  }
+  .nav-btn {
+    background: #fff;
+    border: 2px solid var(--border);
+    border-radius: 999px;
+    padding: 9px 18px;
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: var(--sub);
+    cursor: pointer;
+  }
+  .nav-btn.active[data-tab="diary"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .nav-btn.active[data-tab="garden"] { background: var(--accent-garden); border-color: var(--accent-garden); color: #fff; }
+  .nav-btn.active[data-tab="review"] { background: var(--accent-review); border-color: var(--accent-review); color: #fff; }
+  .nav-btn.active[data-tab="backup"] { background: var(--accent-backup); border-color: var(--accent-backup); color: #fff; }
+
+  .container { max-width: 760px; margin: 0 auto; padding: 8px 16px 70px; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  .toolbar { display: flex; gap: 8px; margin: 16px 0; flex-wrap: wrap; }
+  .toolbar input[type="text"] {
+    flex: 1; min-width: 140px; padding: 11px 14px;
+    border: 2px solid var(--border); border-radius: 12px; font-size: 0.95rem;
+    background: #fff;
+  }
+  #tab-garden .toolbar input[type="text"] { border-color: var(--border-garden); }
+
+  button {
+    cursor: pointer; border: none; border-radius: 12px;
+    padding: 11px 18px; font-size: 0.9rem; font-weight: 700;
+    transition: transform 0.1s, opacity 0.15s;
+  }
+  button:hover { opacity: 0.88; }
+  button:active { transform: scale(0.97); }
+  .btn-primary { background: var(--accent); color: #fff; box-shadow: 0 3px 0 var(--accent-dark); }
+  #tab-garden .btn-primary { background: var(--accent-garden); box-shadow: 0 3px 0 var(--accent-garden-dark); }
+  .btn-secondary { background: #fff; color: var(--text); border: 2px solid var(--border); }
+  .btn-danger { background: var(--danger); color: #fff; }
+
+  .ontheday-wrap {
+    background: linear-gradient(135deg, #fff0f6, #fff8ef);
+    border: 2px dashed var(--accent);
+    border-radius: 16px;
+    padding: 14px 16px;
+    margin: 16px 0;
+  }
+  .onthisday-title { font-weight: 800; color: var(--accent-dark); margin-bottom: 8px; font-size: 1rem; }
+  .onthisday-year { font-size: 0.8rem; font-weight: 700; color: var(--sub); margin: 10px 0 4px; }
+
+  .entry-form {
+    background: var(--card); border: 2px solid var(--border); border-radius: 16px;
+    padding: 18px; margin-bottom: 20px; display: none;
+  }
+  #tab-garden .entry-form { border-color: var(--border-garden); }
+  .entry-form.open { display: block; }
+  .entry-form label { display: block; font-size: 0.8rem; color: var(--sub); margin: 12px 0 4px; font-weight: 700; }
+  .entry-form label:first-of-type { margin-top: 0; }
+  .entry-form input[type="date"],
+  .entry-form input[type="text"],
+  .entry-form textarea {
+    width: 100%; padding: 11px 14px; border: 2px solid var(--border);
+    border-radius: 12px; font-size: 0.95rem; font-family: inherit;
+  }
+  #tab-garden .entry-form input, #tab-garden .entry-form textarea { border-color: var(--border-garden); }
+  .entry-form textarea { min-height: 130px; resize: vertical; line-height: 1.6; }
+  .form-actions { margin-top: 16px; display: flex; gap: 8px; justify-content: flex-end; }
+
+  .photo-preview { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+  .photo-thumb { position: relative; width: 96px; }
+  .photo-thumb img { width: 96px; height: 96px; object-fit: cover; border-radius: 10px; border: 2px solid var(--border); }
+  .photo-thumb .photo-caption {
+    width: 96px; margin-top: 4px; padding: 4px 6px; font-size: 0.7rem;
+    border: 1px solid var(--border); border-radius: 6px;
+  }
+  .photo-thumb .photo-remove {
+    position: absolute; top: -6px; right: -6px; width: 22px; height: 22px; padding: 0;
+    border-radius: 50%; background: var(--danger); color: #fff; font-size: 0.7rem; line-height: 1;
+    box-shadow: none;
+  }
+
+  .entry-list { display: flex; flex-direction: column; gap: 12px; }
+  .entry-card {
+    background: var(--card); border: 2px solid var(--border); border-radius: 16px;
+    padding: 16px; cursor: pointer;
+  }
+  #tab-garden .entry-card, .review-panel .entry-card[data-section="garden"] { border-color: var(--border-garden); }
+  .entry-card:hover { box-shadow: 0 4px 12px rgba(255, 122, 162, 0.15); }
+  .entry-date { font-size: 0.8rem; color: var(--accent-dark); font-weight: 800; margin-bottom: 4px; }
+  .entry-title { font-size: 1.05rem; font-weight: 800; margin-bottom: 6px; }
+  .entry-body {
+    color: var(--text); font-size: 0.9rem; line-height: 1.65; white-space: pre-wrap;
+    overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+  }
+  .entry-card.expanded .entry-body { display: block; -webkit-line-clamp: unset; }
+  .photo-strip { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .photo-strip img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; cursor: zoom-in; }
+  .entry-actions { margin-top: 10px; display: flex; gap: 8px; }
+  .entry-actions button { padding: 6px 12px; font-size: 0.8rem; box-shadow: none; }
+
+  .empty-state { text-align: center; color: var(--sub); padding: 50px 20px; }
+
+  .review-subnav { display: flex; gap: 8px; margin: 16px 0; }
+  .review-subnav button { background: #fff; border: 2px solid var(--border); color: var(--sub); }
+  .review-subnav button.active { background: var(--accent-review); border-color: var(--accent-review); color: #fff; }
+  .review-panel { display: none; }
+  .review-panel.active { display: block; }
+  .review-controls { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+  .review-controls select, .review-controls input[type="date"] {
+    padding: 9px 12px; border: 2px solid var(--border); border-radius: 10px; font-size: 0.9rem;
+  }
+  .review-heading { font-weight: 800; color: var(--accent-review); margin-bottom: 12px; }
+  .month-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 18px; }
+  .month-cell { background: #fff; border: 2px solid var(--border); border-radius: 12px; padding: 10px; text-align: center; }
+  .month-label { font-size: 0.75rem; color: var(--sub); font-weight: 700; }
+  .month-count { font-size: 1.1rem; font-weight: 800; color: var(--accent-review); }
+
+  .backup-panel { text-align: center; }
+  .backup-panel p { color: var(--sub); font-size: 0.85rem; line-height: 1.7; max-width: 480px; margin: 12px auto; }
+  .backup-actions { display: flex; gap: 10px; justify-content: center; margin-top: 16px; flex-wrap: wrap; }
+  .backup-actions button { background: #fff; border: 2px solid var(--accent-backup); color: var(--accent-backup); }
+
+  .lightbox {
+    display: none; position: fixed; inset: 0; background: rgba(20, 12, 16, 0.9);
+    z-index: 1000; align-items: center; justify-content: center; flex-direction: column; padding: 20px;
+  }
+  .lightbox.open { display: flex; }
+  .lightbox img { max-width: 90vw; max-height: 75vh; border-radius: 10px; }
+  .lightbox-caption { color: #fff; margin-top: 12px; font-size: 0.95rem; text-align: center; max-width: 80vw; }
+  .lightbox-close {
+    position: absolute; top: 16px; right: 20px; background: rgba(255,255,255,0.15); color: #fff;
+    width: 40px; height: 40px; border-radius: 50%; font-size: 1.1rem; box-shadow: none;
+  }
+  .lightbox-nav {
+    position: absolute; top: 50%; transform: translateY(-50%); background: rgba(255,255,255,0.15);
+    color: #fff; width: 44px; height: 44px; border-radius: 50%; font-size: 1.4rem; box-shadow: none;
+  }
+  .lightbox-nav.prev { left: 16px; }
+  .lightbox-nav.next { right: 16px; }
+
+  @media (max-width: 480px) {
+    .month-grid { grid-template-columns: repeat(3, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🌸 日記帳 🌱</h1>
+  <p>毎日のこと、庭のこと、少しずつ書き残す</p>
+</header>
+
+<nav class="tabs">
+  <button class="nav-btn active" data-tab="diary">📔 日記</button>
+  <button class="nav-btn" data-tab="garden">🌱 園芸</button>
+  <button class="nav-btn" data-tab="review">📅 振り返り</button>
+  <button class="nav-btn" data-tab="backup">💾 バックアップ</button>
+</nav>
+
+<main class="container">
+
+  <section id="tab-diary" class="tab-panel active">
+    <div id="tab-diary-body"></div>
+  </section>
+
+  <section id="tab-garden" class="tab-panel">
+    <div id="tab-garden-body"></div>
+  </section>
+
+  <section id="tab-review" class="tab-panel">
+    <div class="review-subnav">
+      <button class="active" data-review="week">週間</button>
+      <button data-review="month">月間</button>
+      <button data-review="year">年間</button>
+    </div>
+
+    <div class="review-panel active" id="review-week">
+      <div class="review-controls">
+        <input type="date" id="reviewWeekDate">
+        <button class="btn-secondary" id="reviewWeekShow">表示</button>
+      </div>
+      <div id="reviewWeekResult"></div>
+    </div>
+
+    <div class="review-panel" id="review-month">
+      <div class="review-controls">
+        <select id="reviewYear"></select>
+        <select id="reviewMonth"></select>
+        <button class="btn-secondary" id="reviewMonthShow">表示</button>
+      </div>
+      <div id="reviewMonthResult"></div>
+    </div>
+
+    <div class="review-panel" id="review-year">
+      <div class="review-controls">
+        <select id="reviewYearOnly"></select>
+        <button class="btn-secondary" id="reviewYearShow">表示</button>
+      </div>
+      <div id="reviewYearResult"></div>
+    </div>
+  </section>
+
+  <section id="tab-backup" class="tab-panel">
+    <div class="backup-panel">
+      <p>
+        日記・園芸の文章は自動的にこのパソコン（ブラウザ）に保存されます。<br>
+        写真も同様にこの端末に保存されますが、他の端末には自動で移りません。<br>
+        別の端末でも同じ内容を見たい場合は、こちらでバックアップを保存し、
+        もう一方の端末で「読み込む」を行ってください（写真も含めて復元されます）。
+      </p>
+      <div class="backup-actions">
+        <button id="exportBtn">📤 バックアップを保存(JSON)</button>
+        <button id="importBtn">📥 読み込む</button>
+        <input type="file" id="importFile" accept=".json" style="display:none;">
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<div class="lightbox" id="lightbox">
+  <button class="lightbox-close" id="lightboxClose">✕</button>
+  <button class="lightbox-nav prev" id="lightboxPrev">‹</button>
+  <img id="lightboxImg" src="" alt="">
+  <div class="lightbox-caption" id="lightboxCaption"></div>
+  <button class="lightbox-nav next" id="lightboxNext">›</button>
+</div>
+
+<script>
+/* ---------- IndexedDB (photo storage) ---------- */
+const DB_NAME = 'diaryAppDB';
+const DB_VERSION = 1;
+const STORE = 'photos';
+
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(STORE)) {
+        const store = db.createObjectStore(STORE, { keyPath: 'id' });
+        store.createIndex('entryKey', 'entryKey', { unique: false });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+const dbPromise = openDB();
+
+async function putPhoto(rec) {
+  const db = await dbPromise;
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite');
+    tx.objectStore(STORE).put(rec);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+async function deletePhoto(id) {
+  const db = await dbPromise;
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite');
+    tx.objectStore(STORE).delete(id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+async function getPhotosForEntry(entryKey) {
+  const db = await dbPromise;
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readonly');
+    const req = tx.objectStore(STORE).index('entryKey').getAll(entryKey);
+    req.onsuccess = () => resolve(req.result.sort((a, b) => (a.order || 0) - (b.order || 0)));
+    req.onerror = () => reject(req.error);
+  });
+}
+async function getAllPhotos() {
+  const db = await dbPromise;
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readonly');
+    const req = tx.objectStore(STORE).getAll();
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function clearAllPhotos() {
+  const db = await dbPromise;
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite');
+    tx.objectStore(STORE).clear();
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+function resizeImage(file, maxDim = 1600, quality = 0.82) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) { height = Math.round(height * maxDim / width); width = maxDim; }
+          else { width = Math.round(width * maxDim / height); height = maxDim; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        canvas.toBlob((blob) => resolve(blob), 'image/jpeg', quality);
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+/* ---------- Utilities ---------- */
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+function pad(n) { return String(n).padStart(2, '0'); }
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+function formatDateJp(dateStr) {
+  const [y, m, d] = dateStr.split('-');
+  const dow = ['日', '月', '火', '水', '木', '金', '土'][new Date(dateStr + 'T00:00:00').getDay()];
+  return `${y}年${m}月${d}日（${dow}）`;
+}
+function toDateStr(d) { return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }
+function getWeekRange(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  const day = d.getDay();
+  const start = new Date(d); start.setDate(d.getDate() - day);
+  const end = new Date(start); end.setDate(start.getDate() + 6);
+  return [toDateStr(start), toDateStr(end)];
+}
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str == null ? '' : str;
+  return div.innerHTML;
+}
+
+/* ---------- Entries data ---------- */
+function loadEntries(section) {
+  const key = section === 'garden' ? 'gardenEntries' : 'diaryEntries';
+  try { return JSON.parse(localStorage.getItem(key)) || []; } catch (e) { return []; }
+}
+function saveEntriesData(section, entries) {
+  const key = section === 'garden' ? 'gardenEntries' : 'diaryEntries';
+  localStorage.setItem(key, JSON.stringify(entries));
+}
+let diaryEntries = loadEntries('diary');
+let gardenEntries = loadEntries('garden');
+function entriesOf(section) { return section === 'garden' ? gardenEntries : diaryEntries; }
+
+/* ---------- Section markup template (diary & garden share this) ---------- */
+function sectionTemplate(section, cfg) {
+  return `
+    ${cfg.showOnThisDay ? '<div class="ontheday-wrap" id="onThisDay" style="display:none;"></div>' : ''}
+    <div class="toolbar">
+      <input type="text" id="${section}SearchInput" placeholder="${cfg.searchPlaceholder}">
+      <button class="btn-primary" id="${section}NewBtn">${cfg.newLabel}</button>
+    </div>
+    <div class="entry-form" id="${section}EntryForm">
+      <input type="hidden" id="${section}EditingId">
+      <label>日付</label>
+      <input type="date" id="${section}EntryDate">
+      <label>タイトル（任意）</label>
+      <input type="text" id="${section}EntryTitle" placeholder="${cfg.titlePlaceholder}">
+      <label>${cfg.bodyLabel}</label>
+      <textarea id="${section}EntryBody" placeholder="${cfg.bodyPlaceholder}"></textarea>
+      <label>写真</label>
+      <div class="photo-preview" id="${section}PhotoPreview"></div>
+      <button type="button" class="btn-secondary" id="${section}AddPhotoBtn">📷 写真を追加</button>
+      <input type="file" id="${section}PhotoInput" accept="image/*" multiple style="display:none;">
+      <div class="form-actions">
+        <button class="btn-secondary" id="${section}CancelBtn">キャンセル</button>
+        <button class="btn-primary" id="${section}SaveBtn">保存する</button>
+      </div>
+    </div>
+    <div class="entry-list" id="${section}EntryList"></div>
+    <div class="empty-state" id="${section}EmptyState" style="display:none;">${cfg.emptyText}</div>
+  `;
+}
+
+document.getElementById('tab-diary-body').innerHTML = sectionTemplate('diary', {
+  showOnThisDay: true,
+  searchPlaceholder: 'キーワードや日付で検索',
+  newLabel: '＋ 新しい日記',
+  titlePlaceholder: '例：家族で花見',
+  bodyLabel: '本文',
+  bodyPlaceholder: '今日はどんな一日でしたか？',
+  emptyText: 'まだ日記がありません。「＋ 新しい日記」から書いてみましょう。'
+});
+document.getElementById('tab-garden-body').innerHTML = sectionTemplate('garden', {
+  showOnThisDay: false,
+  searchPlaceholder: '植物名やキーワードで検索',
+  newLabel: '＋ 新しい記録',
+  titlePlaceholder: '例：トマトの様子',
+  bodyLabel: 'メモ',
+  bodyPlaceholder: '水やり、開花、収穫などを記録しましょう',
+  emptyText: 'まだ園芸の記録がありません。「＋ 新しい記録」から始めましょう。'
+});
+
+/* ---------- Form state (per section) ---------- */
+const formPhotos = { diary: [], garden: [] };
+const removedPhotoIds = { diary: [], garden: [] };
+
+function openForm(section, entry) {
+  document.getElementById(`${section}EntryForm`).classList.add('open');
+  formPhotos[section] = [];
+  removedPhotoIds[section] = [];
+  if (entry) {
+    document.getElementById(`${section}EditingId`).value = entry.id;
+    document.getElementById(`${section}EntryDate`).value = entry.date;
+    document.getElementById(`${section}EntryTitle`).value = entry.title || '';
+    document.getElementById(`${section}EntryBody`).value = entry.body || '';
+    getPhotosForEntry(`${section}_${entry.id}`).then(photos => {
+      formPhotos[section] = photos.map(p => ({
+        id: p.id, blob: p.blob, caption: p.caption || '',
+        previewUrl: URL.createObjectURL(p.blob)
+      }));
+      renderFormPhotos(section);
+    });
+  } else {
+    document.getElementById(`${section}EditingId`).value = '';
+    document.getElementById(`${section}EntryDate`).value = todayStr();
+    document.getElementById(`${section}EntryTitle`).value = '';
+    document.getElementById(`${section}EntryBody`).value = '';
+  }
+  renderFormPhotos(section);
+  document.getElementById(`${section}EntryBody`).focus();
+}
+function closeForm(section) {
+  document.getElementById(`${section}EntryForm`).classList.remove('open');
+}
+
+function renderFormPhotos(section) {
+  const container = document.getElementById(`${section}PhotoPreview`);
+  container.innerHTML = formPhotos[section].map((p, i) => `
+    <div class="photo-thumb">
+      <img src="${p.previewUrl}">
+      <input type="text" class="photo-caption" data-idx="${i}" placeholder="説明を入力" value="${escapeHtml(p.caption)}">
+      <button type="button" class="photo-remove" data-idx="${i}">✕</button>
+    </div>
+  `).join('');
+  container.querySelectorAll('.photo-caption').forEach(inp => {
+    inp.addEventListener('input', () => {
+      formPhotos[section][parseInt(inp.dataset.idx, 10)].caption = inp.value;
+    });
+  });
+  container.querySelectorAll('.photo-remove').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.idx, 10);
+      const removed = formPhotos[section].splice(idx, 1)[0];
+      if (removed.id) removedPhotoIds[section].push(removed.id);
+      renderFormPhotos(section);
+    });
+  });
+}
+
+async function saveEntry(section) {
+  const date = document.getElementById(`${section}EntryDate`).value || todayStr();
+  const title = document.getElementById(`${section}EntryTitle`).value.trim();
+  const body = document.getElementById(`${section}EntryBody`).value.trim();
+  if (!body) { alert('本文を入力してください。'); return; }
+
+  const entries = entriesOf(section);
+  const editingId = document.getElementById(`${section}EditingId`).value;
+  let id = editingId;
+  if (id) {
+    const idx = entries.findIndex(e => e.id === id);
+    if (idx !== -1) entries[idx] = { ...entries[idx], date, title, body };
+  } else {
+    id = uid();
+    entries.push({ id, date, title, body, createdAt: Date.now() });
+  }
+  saveEntriesData(section, entries);
+
+  for (const pid of removedPhotoIds[section]) await deletePhoto(pid);
+  const entryKey = `${section}_${id}`;
+  for (let i = 0; i < formPhotos[section].length; i++) {
+    const p = formPhotos[section][i];
+    await putPhoto({
+      id: p.id || uid(),
+      entryKey, section, entryId: id,
+      blob: p.blob, caption: p.caption, order: i,
+      createdAt: Date.now()
+    });
+  }
+
+  closeForm(section);
+  await render(section);
+  if (section === 'diary') await renderOnThisDay();
+}
+
+async function deleteEntry(section, id) {
+  if (!confirm('この記録を削除しますか？（写真も削除されます）')) return;
+  const photos = await getPhotosForEntry(`${section}_${id}`);
+  for (const p of photos) await deletePhoto(p.id);
+  if (section === 'garden') gardenEntries = gardenEntries.filter(e => e.id !== id);
+  else diaryEntries = diaryEntries.filter(e => e.id !== id);
+  saveEntriesData(section, entriesOf(section));
+  await render(section);
+  if (section === 'diary') await renderOnThisDay();
+}
+
+/* ---------- Card rendering (shared by lists, reviews, on-this-day) ---------- */
+async function buildEntryCard(entry, section, opts = {}) {
+  const photos = await getPhotosForEntry(`${section}_${entry.id}`);
+  const card = document.createElement('div');
+  card.className = 'entry-card';
+  card.dataset.section = section;
+  const icon = section === 'garden' ? '🌱' : '📔';
+  const photosHtml = photos.length
+    ? `<div class="photo-strip">${photos.map((p, i) => `<img data-idx="${i}" class="thumb" src="${URL.createObjectURL(p.blob)}">`).join('')}</div>`
+    : '';
+  card.innerHTML = `
+    <div class="entry-date">${icon} ${formatDateJp(entry.date)}</div>
+    ${entry.title ? `<div class="entry-title">${escapeHtml(entry.title)}</div>` : ''}
+    <div class="entry-body">${escapeHtml(entry.body)}</div>
+    ${photosHtml}
+    ${opts.showActions !== false ? `
+      <div class="entry-actions">
+        <button class="btn-secondary edit-btn">編集</button>
+        <button class="btn-danger delete-btn">削除</button>
+      </div>` : ''}
+  `;
+  if (photos.length) {
+    card.querySelectorAll('.thumb').forEach(img => {
+      img.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openLightbox(photos, parseInt(img.dataset.idx, 10));
+      });
+    });
+  }
+  if (opts.showActions !== false) {
+    card.querySelector('.edit-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      switchTab(section);
+      openForm(section, entry);
+    });
+    card.querySelector('.delete-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteEntry(section, entry.id);
+    });
+  }
+  card.addEventListener('click', (e) => {
+    if (e.target.closest('.entry-actions') || e.target.closest('.thumb')) return;
+    card.classList.toggle('expanded');
+  });
+  return card;
+}
+
+async function render(section) {
+  const keyword = document.getElementById(`${section}SearchInput`).value.trim().toLowerCase();
+  let filtered = entriesOf(section).slice()
+    .sort((a, b) => (b.date + b.createdAt).localeCompare(a.date + a.createdAt));
+  if (keyword) {
+    filtered = filtered.filter(e =>
+      (e.title || '').toLowerCase().includes(keyword) ||
+      (e.body || '').toLowerCase().includes(keyword) ||
+      e.date.includes(keyword)
+    );
+  }
+  const listEl = document.getElementById(`${section}EntryList`);
+  const emptyEl = document.getElementById(`${section}EmptyState`);
+  listEl.innerHTML = '';
+  emptyEl.style.display = filtered.length === 0 ? 'block' : 'none';
+  for (const entry of filtered) listEl.appendChild(await buildEntryCard(entry, section));
+}
+
+/* ---------- On-this-day (up to 5 years back) ---------- */
+async function renderOnThisDay() {
+  const container = document.getElementById('onThisDay');
+  if (!container) return;
+  const today = new Date();
+  const mm = pad(today.getMonth() + 1);
+  const dd = pad(today.getDate());
+  const blocks = [];
+  for (let y = 1; y <= 5; y++) {
+    const dateStr = `${today.getFullYear() - y}-${mm}-${dd}`;
+    const matches = [
+      ...diaryEntries.filter(e => e.date === dateStr).map(e => ({ ...e, section: 'diary' })),
+      ...gardenEntries.filter(e => e.date === dateStr).map(e => ({ ...e, section: 'garden' }))
+    ];
+    if (matches.length) blocks.push({ y, matches });
+  }
+  if (!blocks.length) { container.style.display = 'none'; container.innerHTML = ''; return; }
+  container.style.display = 'block';
+  container.innerHTML = `<div class="onthisday-title">✨ ${mm}月${dd}日の思い出</div>`;
+  for (const b of blocks) {
+    const label = document.createElement('div');
+    label.className = 'onthisday-year';
+    label.textContent = `${b.y}年前`;
+    container.appendChild(label);
+    for (const e of b.matches) container.appendChild(await buildEntryCard(e, e.section, { showActions: false }));
+  }
+}
+
+/* ---------- Wiring for diary / garden sections ---------- */
+function wireSection(section) {
+  document.getElementById(`${section}NewBtn`).addEventListener('click', () => openForm(section, null));
+  document.getElementById(`${section}CancelBtn`).addEventListener('click', () => closeForm(section));
+  document.getElementById(`${section}SaveBtn`).addEventListener('click', () => saveEntry(section));
+  document.getElementById(`${section}SearchInput`).addEventListener('input', () => render(section));
+  document.getElementById(`${section}AddPhotoBtn`).addEventListener('click', () => {
+    document.getElementById(`${section}PhotoInput`).click();
+  });
+  document.getElementById(`${section}PhotoInput`).addEventListener('change', async (e) => {
+    const files = Array.from(e.target.files);
+    for (const file of files) {
+      const blob = await resizeImage(file);
+      formPhotos[section].push({ id: null, blob, caption: '', previewUrl: URL.createObjectURL(blob) });
+    }
+    renderFormPhotos(section);
+    e.target.value = '';
+  });
+}
+wireSection('diary');
+wireSection('garden');
+
+/* ---------- Tabs ---------- */
+function switchTab(tab) {
+  document.querySelectorAll('.tab-panel').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+}
+document.querySelectorAll('.nav-btn').forEach(btn => {
+  btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+});
+
+/* ---------- Lightbox ---------- */
+let lightboxPhotos = [];
+let lightboxIndex = 0;
+function updateLightbox() {
+  const p = lightboxPhotos[lightboxIndex];
+  document.getElementById('lightboxImg').src = URL.createObjectURL(p.blob);
+  document.getElementById('lightboxCaption').textContent = p.caption || '';
+}
+function openLightbox(photos, idx) {
+  lightboxPhotos = photos;
+  lightboxIndex = idx;
+  updateLightbox();
+  document.getElementById('lightbox').classList.add('open');
+}
+document.getElementById('lightboxClose').addEventListener('click', () => {
+  document.getElementById('lightbox').classList.remove('open');
+});
+document.getElementById('lightboxPrev').addEventListener('click', () => {
+  lightboxIndex = (lightboxIndex - 1 + lightboxPhotos.length) % lightboxPhotos.length;
+  updateLightbox();
+});
+document.getElementById('lightboxNext').addEventListener('click', () => {
+  lightboxIndex = (lightboxIndex + 1) % lightboxPhotos.length;
+  updateLightbox();
+});
+
+/* ---------- Review tab ---------- */
+document.querySelectorAll('.review-subnav button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.review-subnav button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.review-panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('review-' + btn.dataset.review).classList.add('active');
+  });
+});
+
+function allEntriesTagged() {
+  return [
+    ...diaryEntries.map(e => ({ ...e, section: 'diary' })),
+    ...gardenEntries.map(e => ({ ...e, section: 'garden' }))
+  ];
+}
+
+async function showWeekReview() {
+  const dateVal = document.getElementById('reviewWeekDate').value || todayStr();
+  const [start, end] = getWeekRange(dateVal);
+  const all = allEntriesTagged()
+    .filter(e => e.date >= start && e.date <= end)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const container = document.getElementById('reviewWeekResult');
+  container.innerHTML = '';
+  const heading = document.createElement('div');
+  heading.className = 'review-heading';
+  heading.textContent = `${formatDateJp(start)} 〜 ${formatDateJp(end)}（日記${all.filter(e => e.section === 'diary').length}件 / 園芸${all.filter(e => e.section === 'garden').length}件）`;
+  container.appendChild(heading);
+  if (!all.length) { container.innerHTML += '<div class="empty-state">この週の記録はありません。</div>'; return; }
+  for (const e of all) container.appendChild(await buildEntryCard(e, e.section, { showActions: false }));
+}
+
+async function showMonthReview() {
+  const year = document.getElementById('reviewYear').value;
+  const month = document.getElementById('reviewMonth').value;
+  const prefix = `${year}-${pad(month)}`;
+  const all = allEntriesTagged()
+    .filter(e => e.date.startsWith(prefix))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const container = document.getElementById('reviewMonthResult');
+  container.innerHTML = '';
+  const heading = document.createElement('div');
+  heading.className = 'review-heading';
+  heading.textContent = `${year}年${month}月（日記${all.filter(e => e.section === 'diary').length}件 / 園芸${all.filter(e => e.section === 'garden').length}件）`;
+  container.appendChild(heading);
+  if (!all.length) { container.innerHTML += '<div class="empty-state">この月の記録はありません。</div>'; return; }
+  for (const e of all) container.appendChild(await buildEntryCard(e, e.section, { showActions: false }));
+}
+
+async function showYearReview() {
+  const year = document.getElementById('reviewYearOnly').value;
+  const all = allEntriesTagged()
+    .filter(e => e.date.startsWith(`${year}-`))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const counts = Array(12).fill(0);
+  all.forEach(e => { counts[parseInt(e.date.split('-')[1], 10) - 1]++; });
+  const container = document.getElementById('reviewYearResult');
+  container.innerHTML = `<div class="month-grid">${counts.map((c, i) => `
+    <div class="month-cell"><div class="month-label">${i + 1}月</div><div class="month-count">${c}件</div></div>
+  `).join('')}</div>`;
+  if (!all.length) { container.innerHTML += '<div class="empty-state">この年の記録はありません。</div>'; return; }
+  for (const e of all) container.appendChild(await buildEntryCard(e, e.section, { showActions: false }));
+}
+
+document.getElementById('reviewWeekShow').addEventListener('click', showWeekReview);
+document.getElementById('reviewMonthShow').addEventListener('click', showMonthReview);
+document.getElementById('reviewYearShow').addEventListener('click', showYearReview);
+
+function populateReviewControls() {
+  const y = new Date().getFullYear();
+  const years = []; for (let i = 0; i < 11; i++) years.push(y - i);
+  const yearOpts = years.map(v => `<option value="${v}">${v}年</option>`).join('');
+  document.getElementById('reviewYear').innerHTML = yearOpts;
+  document.getElementById('reviewYearOnly').innerHTML = yearOpts;
+  document.getElementById('reviewMonth').innerHTML =
+    Array.from({ length: 12 }, (_, i) => `<option value="${i + 1}">${i + 1}月</option>`).join('');
+  document.getElementById('reviewWeekDate').value = todayStr();
+  document.getElementById('reviewMonth').value = new Date().getMonth() + 1;
+}
+populateReviewControls();
+
+/* ---------- Backup (export includes photos as base64) ---------- */
+document.getElementById('exportBtn').addEventListener('click', async () => {
+  const photos = await getAllPhotos();
+  const photosData = await Promise.all(photos.map(p => new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = () => resolve({
+      id: p.id, entryKey: p.entryKey, section: p.section, entryId: p.entryId,
+      caption: p.caption, order: p.order, createdAt: p.createdAt, dataUrl: reader.result
+    });
+    reader.readAsDataURL(p.blob);
+  })));
+  const payload = { diaryEntries, gardenEntries, photos: photosData, exportedAt: new Date().toISOString() };
+  const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const d = new Date();
+  a.href = url;
+  a.download = `diary-backup-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+document.getElementById('importBtn').addEventListener('click', () => {
+  document.getElementById('importFile').click();
+});
+document.getElementById('importFile').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async () => {
+    try {
+      const data = JSON.parse(reader.result);
+      const photoCount = (data.photos || []).length;
+      const entryCount = (data.diaryEntries || []).length + (data.gardenEntries || []).length;
+      if (!confirm(`日記・園芸あわせて${entryCount}件、写真${photoCount}枚を読み込みます。現在のデータは上書きされます。よろしいですか？`)) return;
+      diaryEntries = data.diaryEntries || [];
+      gardenEntries = data.gardenEntries || [];
+      saveEntriesData('diary', diaryEntries);
+      saveEntriesData('garden', gardenEntries);
+      await clearAllPhotos();
+      for (const p of (data.photos || [])) {
+        const blob = await (await fetch(p.dataUrl)).blob();
+        await putPhoto({
+          id: p.id, entryKey: p.entryKey, section: p.section, entryId: p.entryId,
+          blob, caption: p.caption, order: p.order, createdAt: p.createdAt
+        });
+      }
+      await render('diary');
+      await render('garden');
+      await renderOnThisDay();
+      alert('読み込みが完了しました。');
+    } catch (err) {
+      alert('読み込みに失敗しました。ファイルの形式を確認してください。');
+    }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
+
+/* ---------- Init ---------- */
+(async function init() {
+  await render('diary');
+  await render('garden');
+  await renderOnThisDay();
+  await showWeekReview();
+  await showMonthReview();
+  await showYearReview();
+})();
+</script>
+
+</body>
+</html>
