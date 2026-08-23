@@ -35,6 +35,11 @@
   header { padding: 28px 16px 8px; text-align: center; }
   header h1 { margin: 0; font-size: 1.7rem; letter-spacing: 0.04em; }
   header p { margin: 6px 0 0; color: var(--sub); font-size: 0.85rem; }
+  .user-bar { text-align: center; font-size: 0.75rem; color: var(--sub); margin-top: 8px; }
+  .user-bar button {
+    margin-left: 8px; padding: 3px 12px; font-size: 0.7rem;
+    background: #fff; border: 1px solid var(--border); box-shadow: none; border-radius: 999px;
+  }
 
   .tabs {
     display: flex;
@@ -182,6 +187,18 @@
   .lightbox-nav.prev { left: 16px; }
   .lightbox-nav.next { right: 16px; }
 
+  .auth-gate {
+    position: fixed; inset: 0; z-index: 2000; display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(160deg, var(--bg-top), var(--bg-mid) 45%, var(--bg-bot) 100%);
+  }
+  .auth-card {
+    background: #fff; border-radius: 20px; padding: 40px 32px; text-align: center;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.08); max-width: 320px;
+  }
+  .auth-card .auth-title { font-size: 1.6rem; font-weight: 800; margin-bottom: 14px; }
+  .auth-card p { color: var(--sub); font-size: 0.85rem; margin-bottom: 22px; line-height: 1.6; }
+  .auth-card button { width: 100%; }
+
   @media (max-width: 480px) {
     .month-grid { grid-template-columns: repeat(3, 1fr); }
   }
@@ -189,9 +206,20 @@
 </head>
 <body>
 
+<div class="auth-gate" id="authGate">
+  <div class="auth-card">
+    <div class="auth-title">🌸 日記帳 🌱</div>
+    <p>データはあなたのGoogleアカウントに安全に保存され、パソコンとスマホで自動的に同期されます。</p>
+    <button class="btn-primary" id="googleSignInBtn">Googleでログイン</button>
+  </div>
+</div>
+
+<div id="appContent" style="display:none;">
+
 <header>
   <h1>🌸 日記帳 🌱</h1>
   <p>毎日のこと、庭のこと、少しずつ書き残す</p>
+  <div class="user-bar" id="userBar"></div>
 </header>
 
 <nav class="tabs">
@@ -247,20 +275,22 @@
   <section id="tab-backup" class="tab-panel">
     <div class="backup-panel">
       <p>
-        日記・園芸の文章は自動的にこのパソコン（ブラウザ）に保存されます。<br>
-        写真も同様にこの端末に保存されますが、他の端末には自動で移りません。<br>
-        別の端末でも同じ内容を見たい場合は、こちらでバックアップを保存し、
-        もう一方の端末で「読み込む」を行ってください（写真も含めて復元されます）。
+        日記・園芸・写真は自動的にクラウド（Firebase）に保存され、
+        ログインしたパソコン・スマホどちらでも同じ内容がすぐに反映されます。<br>
+        こちらのバックアップ機能は「万が一に備えた保存用ファイル」です。
+        普段の利用では押す必要はありません。
       </p>
       <div class="backup-actions">
         <button id="exportBtn">📤 バックアップを保存(JSON)</button>
-        <button id="importBtn">📥 読み込む</button>
+        <button id="importBtn">📥 読み込む（上書き）</button>
         <input type="file" id="importFile" accept=".json" style="display:none;">
       </div>
     </div>
   </section>
 
 </main>
+
+</div>
 
 <div class="lightbox" id="lightbox">
   <button class="lightbox-close" id="lightboxClose">✕</button>
@@ -270,95 +300,29 @@
   <button class="lightbox-nav next" id="lightboxNext">›</button>
 </div>
 
-<script>
-/* ---------- IndexedDB (photo storage) ---------- */
-const DB_NAME = 'diaryAppDB';
-const DB_VERSION = 1;
-const STORE = 'photos';
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import {
+  getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut
+} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import {
+  getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, getDocs, writeBatch
+} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
-function openDB() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = (e) => {
-      const db = e.target.result;
-      if (!db.objectStoreNames.contains(STORE)) {
-        const store = db.createObjectStore(STORE, { keyPath: 'id' });
-        store.createIndex('entryKey', 'entryKey', { unique: false });
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-const dbPromise = openDB();
-
-async function putPhoto(rec) {
-  const db = await dbPromise;
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, 'readwrite');
-    tx.objectStore(STORE).put(rec);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-}
-async function deletePhoto(id) {
-  const db = await dbPromise;
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, 'readwrite');
-    tx.objectStore(STORE).delete(id);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-}
-async function getPhotosForEntry(entryKey) {
-  const db = await dbPromise;
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, 'readonly');
-    const req = tx.objectStore(STORE).index('entryKey').getAll(entryKey);
-    req.onsuccess = () => resolve(req.result.sort((a, b) => (a.order || 0) - (b.order || 0)));
-    req.onerror = () => reject(req.error);
-  });
-}
-async function getAllPhotos() {
-  const db = await dbPromise;
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, 'readonly');
-    const req = tx.objectStore(STORE).getAll();
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-async function clearAllPhotos() {
-  const db = await dbPromise;
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, 'readwrite');
-    tx.objectStore(STORE).clear();
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-}
-
-function resizeImage(file, maxDim = 1600, quality = 0.82) {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onload = () => {
-        let { width, height } = img;
-        if (width > maxDim || height > maxDim) {
-          if (width > height) { height = Math.round(height * maxDim / width); width = maxDim; }
-          else { width = Math.round(width * maxDim / height); height = maxDim; }
-        }
-        const canvas = document.createElement('canvas');
-        canvas.width = width; canvas.height = height;
-        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-        canvas.toBlob((blob) => resolve(blob), 'image/jpeg', quality);
-      };
-      img.src = e.target.result;
-    };
-    reader.readAsDataURL(file);
-  });
-}
+/* ---------- Firebase init ---------- */
+const firebaseConfig = {
+  apiKey: "AIzaSyDhlhAfrsm68SQXY2VrMULILDbIv3gIVUQ",
+  authDomain: "diary-app-d8a07.firebaseapp.com",
+  projectId: "diary-app-d8a07",
+  storageBucket: "diary-app-d8a07.firebasestorage.app",
+  messagingSenderId: "963141766965",
+  appId: "1:963141766965:web:1597ac7548f7cb069f867c",
+  measurementId: "G-J1NP3DQ36D"
+};
+const ALLOWED_EMAIL = "akiko311113@gmail.com";
+const fbApp = initializeApp(firebaseConfig);
+const auth = getAuth(fbApp);
+const db = getFirestore(fbApp);
 
 /* ---------- Utilities ---------- */
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
@@ -385,19 +349,90 @@ function escapeHtml(str) {
   div.textContent = str == null ? '' : str;
   return div.innerHTML;
 }
+function resizeImage(file, maxDim = 1280, quality = 0.75) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) { height = Math.round(height * maxDim / width); width = maxDim; }
+          else { width = Math.round(width * maxDim / height); height = maxDim; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
-/* ---------- Entries data ---------- */
-function loadEntries(section) {
-  const key = section === 'garden' ? 'gardenEntries' : 'diaryEntries';
-  try { return JSON.parse(localStorage.getItem(key)) || []; } catch (e) { return []; }
-}
-function saveEntriesData(section, entries) {
-  const key = section === 'garden' ? 'gardenEntries' : 'diaryEntries';
-  localStorage.setItem(key, JSON.stringify(entries));
-}
-let diaryEntries = loadEntries('diary');
-let gardenEntries = loadEntries('garden');
+/* ---------- Cloud data cache (kept in sync by Firestore listeners) ---------- */
+let diaryEntries = [];
+let gardenEntries = [];
+let allPhotos = [];
+let unsubEntries = null;
+let unsubPhotos = null;
+
 function entriesOf(section) { return section === 'garden' ? gardenEntries : diaryEntries; }
+function getPhotosForEntry(entryKey) {
+  return allPhotos.filter(p => p.entryKey === entryKey).sort((a, b) => (a.order || 0) - (b.order || 0));
+}
+
+/* ---------- Auth ---------- */
+document.getElementById('googleSignInBtn').addEventListener('click', () => {
+  signInWithPopup(auth, new GoogleAuthProvider()).catch(err => {
+    alert('ログインに失敗しました: ' + err.message);
+  });
+});
+
+onAuthStateChanged(auth, async (user) => {
+  if (user && user.email === ALLOWED_EMAIL) {
+    document.getElementById('authGate').style.display = 'none';
+    document.getElementById('appContent').style.display = '';
+    document.getElementById('userBar').innerHTML =
+      `ログイン中: ${escapeHtml(user.email)} <button id="logoutBtn">ログアウト</button>`;
+    document.getElementById('logoutBtn').addEventListener('click', () => signOut(auth));
+    startListeners();
+  } else if (user) {
+    alert('このアプリはご本人専用です。別のアカウントでログインされました。');
+    await signOut(auth);
+  } else {
+    document.getElementById('authGate').style.display = 'flex';
+    document.getElementById('appContent').style.display = 'none';
+    stopListeners();
+  }
+});
+
+function startListeners() {
+  unsubEntries = onSnapshot(collection(db, 'entries'), async (snap) => {
+    const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    diaryEntries = all.filter(e => e.section === 'diary');
+    gardenEntries = all.filter(e => e.section === 'garden');
+    await refreshAllViews();
+  });
+  unsubPhotos = onSnapshot(collection(db, 'photos'), async (snap) => {
+    allPhotos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    await refreshAllViews();
+  });
+}
+function stopListeners() {
+  if (unsubEntries) { unsubEntries(); unsubEntries = null; }
+  if (unsubPhotos) { unsubPhotos(); unsubPhotos = null; }
+  diaryEntries = []; gardenEntries = []; allPhotos = [];
+}
+async function refreshAllViews() {
+  await render('diary');
+  await render('garden');
+  await renderOnThisDay();
+  await showWeekReview();
+  await showMonthReview();
+  await showYearReview();
+}
 
 /* ---------- Section markup template (diary & garden share this) ---------- */
 function sectionTemplate(section, cfg) {
@@ -454,25 +489,20 @@ const removedPhotoIds = { diary: [], garden: [] };
 
 function openForm(section, entry) {
   document.getElementById(`${section}EntryForm`).classList.add('open');
-  formPhotos[section] = [];
   removedPhotoIds[section] = [];
   if (entry) {
     document.getElementById(`${section}EditingId`).value = entry.id;
     document.getElementById(`${section}EntryDate`).value = entry.date;
     document.getElementById(`${section}EntryTitle`).value = entry.title || '';
     document.getElementById(`${section}EntryBody`).value = entry.body || '';
-    getPhotosForEntry(`${section}_${entry.id}`).then(photos => {
-      formPhotos[section] = photos.map(p => ({
-        id: p.id, blob: p.blob, caption: p.caption || '',
-        previewUrl: URL.createObjectURL(p.blob)
-      }));
-      renderFormPhotos(section);
-    });
+    const photos = getPhotosForEntry(`${section}_${entry.id}`);
+    formPhotos[section] = photos.map(p => ({ id: p.id, dataUrl: p.dataUrl, caption: p.caption || '' }));
   } else {
     document.getElementById(`${section}EditingId`).value = '';
     document.getElementById(`${section}EntryDate`).value = todayStr();
     document.getElementById(`${section}EntryTitle`).value = '';
     document.getElementById(`${section}EntryBody`).value = '';
+    formPhotos[section] = [];
   }
   renderFormPhotos(section);
   document.getElementById(`${section}EntryBody`).focus();
@@ -485,7 +515,7 @@ function renderFormPhotos(section) {
   const container = document.getElementById(`${section}PhotoPreview`);
   container.innerHTML = formPhotos[section].map((p, i) => `
     <div class="photo-thumb">
-      <img src="${p.previewUrl}">
+      <img src="${p.dataUrl}">
       <input type="text" class="photo-caption" data-idx="${i}" placeholder="説明を入力" value="${escapeHtml(p.caption)}">
       <button type="button" class="photo-remove" data-idx="${i}">✕</button>
     </div>
@@ -511,55 +541,46 @@ async function saveEntry(section) {
   const body = document.getElementById(`${section}EntryBody`).value.trim();
   if (!body) { alert('本文を入力してください。'); return; }
 
-  const entries = entriesOf(section);
   const editingId = document.getElementById(`${section}EditingId`).value;
-  let id = editingId;
-  if (id) {
-    const idx = entries.findIndex(e => e.id === id);
-    if (idx !== -1) entries[idx] = { ...entries[idx], date, title, body };
-  } else {
-    id = uid();
-    entries.push({ id, date, title, body, createdAt: Date.now() });
-  }
-  saveEntriesData(section, entries);
+  const id = editingId || uid();
+  const existing = editingId ? entriesOf(section).find(e => e.id === id) : null;
 
-  for (const pid of removedPhotoIds[section]) await deletePhoto(pid);
+  await setDoc(doc(db, 'entries', id), {
+    section, date, title, body,
+    createdAt: existing ? existing.createdAt : Date.now()
+  });
+
+  for (const pid of removedPhotoIds[section]) await deleteDoc(doc(db, 'photos', pid));
   const entryKey = `${section}_${id}`;
   for (let i = 0; i < formPhotos[section].length; i++) {
     const p = formPhotos[section][i];
-    await putPhoto({
-      id: p.id || uid(),
-      entryKey, section, entryId: id,
-      blob: p.blob, caption: p.caption, order: i,
-      createdAt: Date.now()
+    const photoId = p.id || uid();
+    await setDoc(doc(db, 'photos', photoId), {
+      entryId: id, section, entryKey, caption: p.caption || '', order: i,
+      dataUrl: p.dataUrl, createdAt: Date.now()
     });
   }
-
   closeForm(section);
-  await render(section);
-  if (section === 'diary') await renderOnThisDay();
 }
 
 async function deleteEntry(section, id) {
   if (!confirm('この記録を削除しますか？（写真も削除されます）')) return;
-  const photos = await getPhotosForEntry(`${section}_${id}`);
-  for (const p of photos) await deletePhoto(p.id);
-  if (section === 'garden') gardenEntries = gardenEntries.filter(e => e.id !== id);
-  else diaryEntries = diaryEntries.filter(e => e.id !== id);
-  saveEntriesData(section, entriesOf(section));
-  await render(section);
-  if (section === 'diary') await renderOnThisDay();
+  const photos = getPhotosForEntry(`${section}_${id}`);
+  const batch = writeBatch(db);
+  batch.delete(doc(db, 'entries', id));
+  for (const p of photos) batch.delete(doc(db, 'photos', p.id));
+  await batch.commit();
 }
 
 /* ---------- Card rendering (shared by lists, reviews, on-this-day) ---------- */
 async function buildEntryCard(entry, section, opts = {}) {
-  const photos = await getPhotosForEntry(`${section}_${entry.id}`);
+  const photos = getPhotosForEntry(`${section}_${entry.id}`);
   const card = document.createElement('div');
   card.className = 'entry-card';
   card.dataset.section = section;
   const icon = section === 'garden' ? '🌱' : '📔';
   const photosHtml = photos.length
-    ? `<div class="photo-strip">${photos.map((p, i) => `<img data-idx="${i}" class="thumb" src="${URL.createObjectURL(p.blob)}">`).join('')}</div>`
+    ? `<div class="photo-strip">${photos.map((p, i) => `<img data-idx="${i}" class="thumb" src="${p.dataUrl}">`).join('')}</div>`
     : '';
   card.innerHTML = `
     <div class="entry-date">${icon} ${formatDateJp(entry.date)}</div>
@@ -656,8 +677,8 @@ function wireSection(section) {
   document.getElementById(`${section}PhotoInput`).addEventListener('change', async (e) => {
     const files = Array.from(e.target.files);
     for (const file of files) {
-      const blob = await resizeImage(file);
-      formPhotos[section].push({ id: null, blob, caption: '', previewUrl: URL.createObjectURL(blob) });
+      const dataUrl = await resizeImage(file);
+      formPhotos[section].push({ id: null, dataUrl, caption: '' });
     }
     renderFormPhotos(section);
     e.target.value = '';
@@ -681,7 +702,7 @@ let lightboxPhotos = [];
 let lightboxIndex = 0;
 function updateLightbox() {
   const p = lightboxPhotos[lightboxIndex];
-  document.getElementById('lightboxImg').src = URL.createObjectURL(p.blob);
+  document.getElementById('lightboxImg').src = p.dataUrl;
   document.getElementById('lightboxCaption').textContent = p.caption || '';
 }
 function openLightbox(photos, idx) {
@@ -784,18 +805,9 @@ function populateReviewControls() {
 }
 populateReviewControls();
 
-/* ---------- Backup (export includes photos as base64) ---------- */
-document.getElementById('exportBtn').addEventListener('click', async () => {
-  const photos = await getAllPhotos();
-  const photosData = await Promise.all(photos.map(p => new Promise(resolve => {
-    const reader = new FileReader();
-    reader.onload = () => resolve({
-      id: p.id, entryKey: p.entryKey, section: p.section, entryId: p.entryId,
-      caption: p.caption, order: p.order, createdAt: p.createdAt, dataUrl: reader.result
-    });
-    reader.readAsDataURL(p.blob);
-  })));
-  const payload = { diaryEntries, gardenEntries, photos: photosData, exportedAt: new Date().toISOString() };
+/* ---------- Backup (safety export/import, cloud remains source of truth) ---------- */
+document.getElementById('exportBtn').addEventListener('click', () => {
+  const payload = { diaryEntries, gardenEntries, photos: allPhotos, exportedAt: new Date().toISOString() };
   const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -816,42 +828,50 @@ document.getElementById('importFile').addEventListener('change', (e) => {
   reader.onload = async () => {
     try {
       const data = JSON.parse(reader.result);
-      const photoCount = (data.photos || []).length;
-      const entryCount = (data.diaryEntries || []).length + (data.gardenEntries || []).length;
-      if (!confirm(`日記・園芸あわせて${entryCount}件、写真${photoCount}枚を読み込みます。現在のデータは上書きされます。よろしいですか？`)) return;
-      diaryEntries = data.diaryEntries || [];
-      gardenEntries = data.gardenEntries || [];
-      saveEntriesData('diary', diaryEntries);
-      saveEntriesData('garden', gardenEntries);
-      await clearAllPhotos();
-      for (const p of (data.photos || [])) {
-        const blob = await (await fetch(p.dataUrl)).blob();
-        await putPhoto({
-          id: p.id, entryKey: p.entryKey, section: p.section, entryId: p.entryId,
-          blob, caption: p.caption, order: p.order, createdAt: p.createdAt
+      const importedEntries = [
+        ...(data.diaryEntries || []).map(en => ({ ...en, section: 'diary' })),
+        ...(data.gardenEntries || []).map(en => ({ ...en, section: 'garden' }))
+      ];
+      const importedPhotos = data.photos || [];
+      if (!confirm(`日記・園芸あわせて${importedEntries.length}件、写真${importedPhotos.length}枚を読み込みます。現在のクラウド上のデータは上書きされます。よろしいですか？`)) return;
+
+      const existingEntries = await getDocs(collection(db, 'entries'));
+      const existingPhotos = await getDocs(collection(db, 'photos'));
+      let batch = writeBatch(db);
+      let ops = 0;
+      const flushIfNeeded = async () => { if (ops >= 400) { await batch.commit(); batch = writeBatch(db); ops = 0; } };
+      for (const d of existingEntries.docs) { batch.delete(d.ref); ops++; await flushIfNeeded(); }
+      for (const d of existingPhotos.docs) { batch.delete(d.ref); ops++; await flushIfNeeded(); }
+      await batch.commit();
+
+      batch = writeBatch(db); ops = 0;
+      for (const en of importedEntries) {
+        const id = en.id || uid();
+        batch.set(doc(db, 'entries', id), {
+          section: en.section, date: en.date, title: en.title || '', body: en.body || '',
+          createdAt: en.createdAt || Date.now()
         });
+        ops++; await flushIfNeeded();
       }
-      await render('diary');
-      await render('garden');
-      await renderOnThisDay();
+      for (const p of importedPhotos) {
+        const id = p.id || uid();
+        batch.set(doc(db, 'photos', id), {
+          entryId: p.entryId, section: p.section, entryKey: p.entryKey,
+          caption: p.caption || '', order: p.order || 0, dataUrl: p.dataUrl,
+          createdAt: p.createdAt || Date.now()
+        });
+        ops++; await flushIfNeeded();
+      }
+      await batch.commit();
       alert('読み込みが完了しました。');
     } catch (err) {
+      console.error(err);
       alert('読み込みに失敗しました。ファイルの形式を確認してください。');
     }
   };
   reader.readAsText(file);
   e.target.value = '';
 });
-
-/* ---------- Init ---------- */
-(async function init() {
-  await render('diary');
-  await render('garden');
-  await renderOnThisDay();
-  await showWeekReview();
-  await showMonthReview();
-  await showYearReview();
-})();
 </script>
 
 </body>
