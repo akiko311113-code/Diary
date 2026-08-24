@@ -115,15 +115,15 @@
   .entry-form textarea { min-height: 130px; resize: vertical; line-height: 1.6; }
   .form-actions { margin-top: 16px; display: flex; gap: 8px; justify-content: flex-end; }
 
-  .photo-preview { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
-  .photo-thumb { position: relative; width: 96px; }
-  .photo-thumb img { width: 96px; height: 96px; object-fit: cover; border-radius: 10px; border: 2px solid var(--border); }
+  .photo-preview { display: flex; flex-direction: column; gap: 10px; margin-bottom: 8px; }
+  .photo-thumb { position: relative; display: flex; gap: 10px; align-items: flex-start; width: 100%; padding-right: 30px; }
+  .photo-thumb img { width: 72px; height: 72px; object-fit: cover; border-radius: 10px; border: 2px solid var(--border); flex-shrink: 0; }
   .photo-thumb .photo-caption {
-    width: 96px; margin-top: 4px; padding: 4px 6px; font-size: 0.7rem;
-    border: 1px solid var(--border); border-radius: 6px;
+    flex: 1; min-height: 56px; padding: 8px 10px; font-size: 0.85rem; line-height: 1.5;
+    border: 1px solid var(--border); border-radius: 8px; font-family: inherit; resize: vertical;
   }
   .photo-thumb .photo-remove {
-    position: absolute; top: -6px; right: -6px; width: 22px; height: 22px; padding: 0;
+    position: absolute; top: 0; right: 0; width: 22px; height: 22px; padding: 0;
     border-radius: 50%; background: var(--danger); color: #fff; font-size: 0.7rem; line-height: 1;
     box-shadow: none;
   }
@@ -133,7 +133,8 @@
     background: var(--card); border: 2px solid var(--border); border-radius: 16px;
     padding: 16px; cursor: pointer;
   }
-  #tab-garden .entry-card, .review-panel .entry-card[data-section="garden"] { border-color: var(--border-garden); }
+  #tab-garden .entry-card, .entry-card[data-section="garden"] { border-color: var(--border-garden); }
+  .entry-card[data-section="garden"] .entry-date { color: var(--accent-garden-dark); }
   .entry-card:hover { box-shadow: 0 4px 12px rgba(255, 122, 162, 0.15); }
   .entry-date { font-size: 0.8rem; color: var(--accent-dark); font-weight: 800; margin-bottom: 4px; }
   .entry-title { font-size: 1.05rem; font-weight: 800; margin-bottom: 6px; }
@@ -516,7 +517,7 @@ function renderFormPhotos(section) {
   container.innerHTML = formPhotos[section].map((p, i) => `
     <div class="photo-thumb">
       <img src="${p.dataUrl}">
-      <input type="text" class="photo-caption" data-idx="${i}" placeholder="説明を入力" value="${escapeHtml(p.caption)}">
+      <textarea class="photo-caption" data-idx="${i}" placeholder="この写真の説明を入力（例：今年初めての開花。去年より2週間早い）">${escapeHtml(p.caption)}</textarea>
       <button type="button" class="photo-remove" data-idx="${i}">✕</button>
     </div>
   `).join('');
@@ -634,7 +635,17 @@ async function render(section) {
   const emptyEl = document.getElementById(`${section}EmptyState`);
   listEl.innerHTML = '';
   emptyEl.style.display = filtered.length === 0 ? 'block' : 'none';
-  for (const entry of filtered) listEl.appendChild(await buildEntryCard(entry, section));
+  const shownGardenIds = new Set();
+  for (const entry of filtered) {
+    listEl.appendChild(await buildEntryCard(entry, section));
+    if (section === 'diary') {
+      const companions = gardenEntries.filter(g => g.date === entry.date && !shownGardenIds.has(g.id));
+      for (const g of companions) {
+        shownGardenIds.add(g.id);
+        listEl.appendChild(await buildEntryCard(g, 'garden'));
+      }
+    }
+  }
 }
 
 /* ---------- On-this-day (up to 5 years back) ---------- */
