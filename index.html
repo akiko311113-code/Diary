@@ -129,7 +129,8 @@
   }
 
   .entry-list { display: flex; flex-direction: column; gap: 12px; }
-  .entry-list .entry-card.companion { margin-top: -6px; }
+  .companion-block { margin-top: 16px; padding-top: 14px; border-top: 2px dashed var(--border-garden); }
+  .companion-label { font-size: 0.75rem; font-weight: 700; color: var(--accent-garden-dark); margin-bottom: 6px; }
   .entry-card {
     background: var(--card); border: 2px solid var(--border); border-radius: 16px;
     padding: 16px; cursor: pointer;
@@ -584,9 +585,8 @@ async function buildEntryCard(entry, section, opts = {}) {
   const photosHtml = photos.length
     ? `<div class="photo-strip">${photos.map((p, i) => `<img data-idx="${i}" class="thumb" src="${p.dataUrl}">`).join('')}</div>`
     : '';
-  const dateLine = opts.dateLabel || `${icon} ${formatDateJp(entry.date)}`;
   card.innerHTML = `
-    <div class="entry-date">${dateLine}</div>
+    <div class="entry-date">${icon} ${formatDateJp(entry.date)}</div>
     ${entry.title ? `<div class="entry-title">${escapeHtml(entry.title)}</div>` : ''}
     <div class="entry-body">${escapeHtml(entry.body)}</div>
     ${photosHtml}
@@ -622,6 +622,85 @@ async function buildEntryCard(entry, section, opts = {}) {
   return card;
 }
 
+/* One card holding a diary entry plus any garden entries on the same date */
+async function buildCombinedCard(diaryEntry, gardenCompanions) {
+  const card = document.createElement('div');
+  card.className = 'entry-card';
+  card.dataset.section = 'diary';
+
+  const diaryPhotos = getPhotosForEntry(`diary_${diaryEntry.id}`);
+  const diaryPhotosHtml = diaryPhotos.length
+    ? `<div class="photo-strip">${diaryPhotos.map((p, i) => `<img data-idx="${i}" class="thumb diary-thumb" src="${p.dataUrl}">`).join('')}</div>`
+    : '';
+
+  const gardenPhotosMap = {};
+  const gardenBlocksHtml = gardenCompanions.map(g => {
+    const gPhotos = getPhotosForEntry(`garden_${g.id}`);
+    gardenPhotosMap[g.id] = gPhotos;
+    const gPhotosHtml = gPhotos.length
+      ? `<div class="photo-strip">${gPhotos.map((p, i) => `<img data-idx="${i}" class="thumb garden-thumb" data-garden-id="${g.id}" src="${p.dataUrl}">`).join('')}</div>`
+      : '';
+    return `
+      <div class="companion-block">
+        <div class="companion-label">🌱 同じ日の園芸記録</div>
+        ${g.title ? `<div class="entry-title">${escapeHtml(g.title)}</div>` : ''}
+        <div class="entry-body">${escapeHtml(g.body)}</div>
+        ${gPhotosHtml}
+        <div class="entry-actions">
+          <button class="btn-secondary garden-edit-btn" data-garden-id="${g.id}">編集</button>
+          <button class="btn-danger garden-delete-btn" data-garden-id="${g.id}">削除</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  card.innerHTML = `
+    <div class="entry-date">📔 ${formatDateJp(diaryEntry.date)}</div>
+    ${diaryEntry.title ? `<div class="entry-title">${escapeHtml(diaryEntry.title)}</div>` : ''}
+    <div class="entry-body">${escapeHtml(diaryEntry.body)}</div>
+    ${diaryPhotosHtml}
+    <div class="entry-actions">
+      <button class="btn-secondary diary-edit-btn">編集</button>
+      <button class="btn-danger diary-delete-btn">削除</button>
+    </div>
+    ${gardenBlocksHtml}
+  `;
+
+  card.querySelectorAll('.diary-thumb').forEach(img => {
+    img.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openLightbox(diaryPhotos, parseInt(img.dataset.idx, 10));
+    });
+  });
+  card.querySelector('.diary-edit-btn').addEventListener('click', (e) => {
+    e.stopPropagation(); switchTab('diary'); openForm('diary', diaryEntry);
+  });
+  card.querySelector('.diary-delete-btn').addEventListener('click', (e) => {
+    e.stopPropagation(); deleteEntry('diary', diaryEntry.id);
+  });
+
+  card.querySelectorAll('.garden-thumb').forEach(img => {
+    img.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openLightbox(gardenPhotosMap[img.dataset.gardenId], parseInt(img.dataset.idx, 10));
+    });
+  });
+  for (const g of gardenCompanions) {
+    card.querySelector(`.garden-edit-btn[data-garden-id="${g.id}"]`).addEventListener('click', (e) => {
+      e.stopPropagation(); switchTab('garden'); openForm('garden', g);
+    });
+    card.querySelector(`.garden-delete-btn[data-garden-id="${g.id}"]`).addEventListener('click', (e) => {
+      e.stopPropagation(); deleteEntry('garden', g.id);
+    });
+  }
+
+  card.addEventListener('click', (e) => {
+    if (e.target.closest('.entry-actions') || e.target.closest('.thumb')) return;
+    card.classList.toggle('expanded');
+  });
+  return card;
+}
+
 async function render(section) {
   const keyword = document.getElementById(`${section}SearchInput`).value.trim().toLowerCase();
   let filtered = entriesOf(section).slice()
@@ -639,15 +718,14 @@ async function render(section) {
   emptyEl.style.display = filtered.length === 0 ? 'block' : 'none';
   const shownGardenIds = new Set();
   for (const entry of filtered) {
-    listEl.appendChild(await buildEntryCard(entry, section));
     if (section === 'diary') {
       const companions = gardenEntries.filter(g => g.date === entry.date && !shownGardenIds.has(g.id));
-      for (const g of companions) {
-        shownGardenIds.add(g.id);
-        const companionCard = await buildEntryCard(g, 'garden', { dateLabel: '🌱 同じ日の園芸記録' });
-        companionCard.classList.add('companion');
-        listEl.appendChild(companionCard);
-      }
+      companions.forEach(g => shownGardenIds.add(g.id));
+      listEl.appendChild(companions.length
+        ? await buildCombinedCard(entry, companions)
+        : await buildEntryCard(entry, section));
+    } else {
+      listEl.appendChild(await buildEntryCard(entry, section));
     }
   }
 }
