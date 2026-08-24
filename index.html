@@ -129,6 +129,7 @@
   }
 
   .entry-list { display: flex; flex-direction: column; gap: 12px; }
+  .entry-list .entry-card.companion { margin-top: -6px; }
   .entry-card {
     background: var(--card); border: 2px solid var(--border); border-radius: 16px;
     padding: 16px; cursor: pointer;
@@ -583,8 +584,9 @@ async function buildEntryCard(entry, section, opts = {}) {
   const photosHtml = photos.length
     ? `<div class="photo-strip">${photos.map((p, i) => `<img data-idx="${i}" class="thumb" src="${p.dataUrl}">`).join('')}</div>`
     : '';
+  const dateLine = opts.dateLabel || `${icon} ${formatDateJp(entry.date)}`;
   card.innerHTML = `
-    <div class="entry-date">${icon} ${formatDateJp(entry.date)}</div>
+    <div class="entry-date">${dateLine}</div>
     ${entry.title ? `<div class="entry-title">${escapeHtml(entry.title)}</div>` : ''}
     <div class="entry-body">${escapeHtml(entry.body)}</div>
     ${photosHtml}
@@ -642,7 +644,9 @@ async function render(section) {
       const companions = gardenEntries.filter(g => g.date === entry.date && !shownGardenIds.has(g.id));
       for (const g of companions) {
         shownGardenIds.add(g.id);
-        listEl.appendChild(await buildEntryCard(g, 'garden'));
+        const companionCard = await buildEntryCard(g, 'garden', { dateLabel: '🌱 同じ日の園芸記録' });
+        companionCard.classList.add('companion');
+        listEl.appendChild(companionCard);
       }
     }
   }
