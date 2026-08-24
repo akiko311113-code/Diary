@@ -623,7 +623,8 @@ async function buildEntryCard(entry, section, opts = {}) {
 }
 
 /* One card holding a diary entry plus any garden entries on the same date */
-async function buildCombinedCard(diaryEntry, gardenCompanions) {
+async function buildCombinedCard(diaryEntry, gardenCompanions, opts = {}) {
+  const showActions = opts.showActions !== false;
   const card = document.createElement('div');
   card.className = 'entry-card';
   card.dataset.section = 'diary';
@@ -646,10 +647,11 @@ async function buildCombinedCard(diaryEntry, gardenCompanions) {
         ${g.title ? `<div class="entry-title">${escapeHtml(g.title)}</div>` : ''}
         <div class="entry-body">${escapeHtml(g.body)}</div>
         ${gPhotosHtml}
+        ${showActions ? `
         <div class="entry-actions">
           <button class="btn-secondary garden-edit-btn" data-garden-id="${g.id}">編集</button>
           <button class="btn-danger garden-delete-btn" data-garden-id="${g.id}">削除</button>
-        </div>
+        </div>` : ''}
       </div>
     `;
   }).join('');
@@ -659,10 +661,11 @@ async function buildCombinedCard(diaryEntry, gardenCompanions) {
     ${diaryEntry.title ? `<div class="entry-title">${escapeHtml(diaryEntry.title)}</div>` : ''}
     <div class="entry-body">${escapeHtml(diaryEntry.body)}</div>
     ${diaryPhotosHtml}
+    ${showActions ? `
     <div class="entry-actions">
       <button class="btn-secondary diary-edit-btn">編集</button>
       <button class="btn-danger diary-delete-btn">削除</button>
-    </div>
+    </div>` : ''}
     ${gardenBlocksHtml}
   `;
 
@@ -672,26 +675,27 @@ async function buildCombinedCard(diaryEntry, gardenCompanions) {
       openLightbox(diaryPhotos, parseInt(img.dataset.idx, 10));
     });
   });
-  card.querySelector('.diary-edit-btn').addEventListener('click', (e) => {
-    e.stopPropagation(); switchTab('diary'); openForm('diary', diaryEntry);
-  });
-  card.querySelector('.diary-delete-btn').addEventListener('click', (e) => {
-    e.stopPropagation(); deleteEntry('diary', diaryEntry.id);
-  });
-
   card.querySelectorAll('.garden-thumb').forEach(img => {
     img.addEventListener('click', (e) => {
       e.stopPropagation();
       openLightbox(gardenPhotosMap[img.dataset.gardenId], parseInt(img.dataset.idx, 10));
     });
   });
-  for (const g of gardenCompanions) {
-    card.querySelector(`.garden-edit-btn[data-garden-id="${g.id}"]`).addEventListener('click', (e) => {
-      e.stopPropagation(); switchTab('garden'); openForm('garden', g);
+  if (showActions) {
+    card.querySelector('.diary-edit-btn').addEventListener('click', (e) => {
+      e.stopPropagation(); switchTab('diary'); openForm('diary', diaryEntry);
     });
-    card.querySelector(`.garden-delete-btn[data-garden-id="${g.id}"]`).addEventListener('click', (e) => {
-      e.stopPropagation(); deleteEntry('garden', g.id);
+    card.querySelector('.diary-delete-btn').addEventListener('click', (e) => {
+      e.stopPropagation(); deleteEntry('diary', diaryEntry.id);
     });
+    for (const g of gardenCompanions) {
+      card.querySelector(`.garden-edit-btn[data-garden-id="${g.id}"]`).addEventListener('click', (e) => {
+        e.stopPropagation(); switchTab('garden'); openForm('garden', g);
+      });
+      card.querySelector(`.garden-delete-btn[data-garden-id="${g.id}"]`).addEventListener('click', (e) => {
+        e.stopPropagation(); deleteEntry('garden', g.id);
+      });
+    }
   }
 
   card.addEventListener('click', (e) => {
@@ -699,6 +703,35 @@ async function buildCombinedCard(diaryEntry, gardenCompanions) {
     card.classList.toggle('expanded');
   });
   return card;
+}
+
+/* Groups a chronological list of tagged entries (diary+garden) by date,
+   merging same-date diary+garden pairs into one combined card. */
+async function buildGroupedCards(taggedEntries, opts = {}) {
+  const order = [];
+  const byDate = new Map();
+  for (const e of taggedEntries) {
+    if (!byDate.has(e.date)) { byDate.set(e.date, { diary: [], garden: [] }); order.push(e.date); }
+    byDate.get(e.date)[e.section].push(e);
+  }
+  const cards = [];
+  for (const date of order) {
+    const group = byDate.get(date);
+    let gardenLeft = group.garden.slice();
+    if (group.diary.length) {
+      for (const d of group.diary) {
+        if (gardenLeft.length) {
+          cards.push(await buildCombinedCard(d, gardenLeft, opts));
+          gardenLeft = [];
+        } else {
+          cards.push(await buildEntryCard(d, 'diary', opts));
+        }
+      }
+    } else {
+      for (const g of gardenLeft) cards.push(await buildEntryCard(g, 'garden', opts));
+    }
+  }
+  return cards;
 }
 
 async function render(section) {
@@ -716,17 +749,15 @@ async function render(section) {
   const emptyEl = document.getElementById(`${section}EmptyState`);
   listEl.innerHTML = '';
   emptyEl.style.display = filtered.length === 0 ? 'block' : 'none';
-  const shownGardenIds = new Set();
-  for (const entry of filtered) {
-    if (section === 'diary') {
-      const companions = gardenEntries.filter(g => g.date === entry.date && !shownGardenIds.has(g.id));
-      companions.forEach(g => shownGardenIds.add(g.id));
-      listEl.appendChild(companions.length
-        ? await buildCombinedCard(entry, companions)
-        : await buildEntryCard(entry, section));
-    } else {
-      listEl.appendChild(await buildEntryCard(entry, section));
-    }
+  if (section === 'diary') {
+    const filteredDates = new Set(filtered.map(e => e.date));
+    const tagged = [
+      ...filtered.map(e => ({ ...e, section: 'diary' })),
+      ...gardenEntries.filter(g => filteredDates.has(g.date)).map(g => ({ ...g, section: 'garden' }))
+    ];
+    for (const card of await buildGroupedCards(tagged)) listEl.appendChild(card);
+  } else {
+    for (const entry of filtered) listEl.appendChild(await buildEntryCard(entry, section));
   }
 }
 
@@ -754,7 +785,7 @@ async function renderOnThisDay() {
     label.className = 'onthisday-year';
     label.textContent = `${b.y}年前`;
     container.appendChild(label);
-    for (const e of b.matches) container.appendChild(await buildEntryCard(e, e.section, { showActions: false }));
+    for (const card of await buildGroupedCards(b.matches, { showActions: false })) container.appendChild(card);
   }
 }
 
@@ -846,7 +877,7 @@ async function showWeekReview() {
   heading.textContent = `${formatDateJp(start)} 〜 ${formatDateJp(end)}（日記${all.filter(e => e.section === 'diary').length}件 / 園芸${all.filter(e => e.section === 'garden').length}件）`;
   container.appendChild(heading);
   if (!all.length) { container.innerHTML += '<div class="empty-state">この週の記録はありません。</div>'; return; }
-  for (const e of all) container.appendChild(await buildEntryCard(e, e.section, { showActions: false }));
+  for (const card of await buildGroupedCards(all, { showActions: false })) container.appendChild(card);
 }
 
 async function showMonthReview() {
@@ -863,7 +894,7 @@ async function showMonthReview() {
   heading.textContent = `${year}年${month}月（日記${all.filter(e => e.section === 'diary').length}件 / 園芸${all.filter(e => e.section === 'garden').length}件）`;
   container.appendChild(heading);
   if (!all.length) { container.innerHTML += '<div class="empty-state">この月の記録はありません。</div>'; return; }
-  for (const e of all) container.appendChild(await buildEntryCard(e, e.section, { showActions: false }));
+  for (const card of await buildGroupedCards(all, { showActions: false })) container.appendChild(card);
 }
 
 async function showYearReview() {
@@ -878,7 +909,7 @@ async function showYearReview() {
     <div class="month-cell"><div class="month-label">${i + 1}月</div><div class="month-count">${c}件</div></div>
   `).join('')}</div>`;
   if (!all.length) { container.innerHTML += '<div class="empty-state">この年の記録はありません。</div>'; return; }
-  for (const e of all) container.appendChild(await buildEntryCard(e, e.section, { showActions: false }));
+  for (const card of await buildGroupedCards(all, { showActions: false })) container.appendChild(card);
 }
 
 document.getElementById('reviewWeekShow').addEventListener('click', showWeekReview);
