@@ -19,6 +19,9 @@
     --accent-garden-dark: #3f9142;
     --accent-review: #a78bfa;
     --accent-backup: #7fa9d4;
+    --accent-schedule: #5b9bd5;
+    --accent-schedule-dark: #3d7ab5;
+    --border-schedule: #d5e6f5;
     --border: #ffe1ec;
     --border-garden: #d9f0d9;
     --danger: #f2545b;
@@ -62,6 +65,7 @@
   .nav-btn.active[data-tab="garden"] { background: var(--accent-garden); border-color: var(--accent-garden); color: #fff; }
   .nav-btn.active[data-tab="review"] { background: var(--accent-review); border-color: var(--accent-review); color: #fff; }
   .nav-btn.active[data-tab="backup"] { background: var(--accent-backup); border-color: var(--accent-backup); color: #fff; }
+  .nav-btn.active[data-tab="schedule"] { background: var(--accent-schedule); border-color: var(--accent-schedule); color: #fff; }
 
   .container { max-width: 760px; margin: 0 auto; padding: 8px 16px 70px; }
   .tab-panel { display: none; }
@@ -137,6 +141,8 @@
   }
   #tab-garden .entry-card, .entry-card[data-section="garden"] { border-color: var(--border-garden); }
   .entry-card[data-section="garden"] .entry-date { color: var(--accent-garden-dark); }
+  .entry-card[data-section="schedule"] { border-color: var(--border-schedule); }
+  .entry-card[data-section="schedule"] .entry-date { color: var(--accent-schedule-dark); }
   .entry-card:hover { box-shadow: 0 4px 12px rgba(255, 122, 162, 0.15); }
   .entry-date { font-size: 0.8rem; color: var(--accent-dark); font-weight: 800; margin-bottom: 4px; }
   .category-badge {
@@ -176,6 +182,36 @@
   .month-cell { background: #fff; border: 2px solid var(--border); border-radius: 12px; padding: 10px; text-align: center; }
   .month-label { font-size: 0.75rem; color: var(--sub); font-weight: 700; }
   .month-count { font-size: 1.1rem; font-weight: 800; color: var(--accent-review); }
+
+  .cal-controls { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+  .cal-controls select {
+    padding: 9px 12px; border: 2px solid var(--border-schedule); border-radius: 10px; font-size: 0.9rem;
+  }
+  .cal-controls button { background: #fff; border: 2px solid var(--border-schedule); color: var(--accent-schedule-dark); }
+  .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: 20px; }
+  .cal-weekday { text-align: center; font-size: 0.75rem; font-weight: 700; color: var(--sub); padding: 4px 0; }
+  .cal-day {
+    background: #fff; border: 2px solid var(--border-schedule); border-radius: 10px;
+    min-height: 64px; padding: 4px; cursor: pointer; display: flex; flex-direction: column; gap: 2px;
+  }
+  .cal-day:hover { box-shadow: 0 2px 8px rgba(91, 155, 213, 0.2); }
+  .cal-day.empty { background: transparent; border-color: transparent; cursor: default; }
+  .cal-day.today { border-color: var(--accent-schedule); border-width: 3px; }
+  .cal-day.selected { background: #eaf3fb; }
+  .cal-daynum { font-size: 0.75rem; font-weight: 700; color: var(--text); }
+  .cal-event-chip {
+    background: var(--border-schedule); color: var(--accent-schedule-dark); border-radius: 6px;
+    padding: 1px 4px; font-size: 0.65rem; font-weight: 700; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .schedule-form-date { font-weight: 800; color: var(--accent-schedule-dark); margin-bottom: 8px; }
+  #scheduleEntryForm { border-color: var(--border-schedule); }
+  #scheduleEntryForm input, #scheduleEntryForm textarea { border-color: var(--border-schedule); }
+  #tab-schedule .btn-primary { background: var(--accent-schedule); box-shadow: 0 3px 0 var(--accent-schedule-dark); }
+  @media (max-width: 480px) {
+    .cal-day { min-height: 48px; }
+    .cal-event-chip { font-size: 0.6rem; }
+  }
 
   .backup-panel { text-align: center; }
   .backup-panel p { color: var(--sub); font-size: 0.85rem; line-height: 1.7; max-width: 480px; margin: 12px auto; }
@@ -238,6 +274,7 @@
 <nav class="tabs">
   <button class="nav-btn active" data-tab="diary">📔 日記</button>
   <button class="nav-btn" data-tab="garden">🌱 園芸</button>
+  <button class="nav-btn" data-tab="schedule">🗓️ 予定</button>
   <button class="nav-btn" data-tab="review">📅 振り返り</button>
   <button class="nav-btn" data-tab="backup">💾 バックアップ</button>
 </nav>
@@ -250,6 +287,46 @@
 
   <section id="tab-garden" class="tab-panel">
     <div id="tab-garden-body"></div>
+  </section>
+
+  <section id="tab-schedule" class="tab-panel">
+    <div class="review-subnav schedule-subnav">
+      <button class="active" data-schedule="month">月間</button>
+      <button data-schedule="year">年間</button>
+    </div>
+
+    <div class="review-panel active" id="schedule-month">
+      <div class="cal-controls">
+        <button class="btn-secondary" id="calPrevMonth">‹ 前月</button>
+        <select id="scheduleCalYear"></select>
+        <select id="scheduleCalMonth"></select>
+        <button class="btn-secondary" id="calNextMonth">翌月 ›</button>
+      </div>
+      <div class="calendar-grid" id="scheduleCalendarGrid"></div>
+
+      <div class="entry-form" id="scheduleEntryForm">
+        <input type="hidden" id="scheduleEditingId">
+        <input type="hidden" id="scheduleSelectedDate">
+        <div class="schedule-form-date" id="scheduleFormDateLabel"></div>
+        <label>タイトル</label>
+        <input type="text" id="scheduleEntryTitle" placeholder="例：病院の予約">
+        <label>メモ（任意）</label>
+        <textarea id="scheduleEntryNote" placeholder="時間や持ち物など"></textarea>
+        <div class="form-actions">
+          <button class="btn-secondary" id="scheduleCancelBtn">キャンセル</button>
+          <button class="btn-primary" id="scheduleSaveBtn">保存する</button>
+        </div>
+      </div>
+      <div id="scheduleDayPanel"></div>
+    </div>
+
+    <div class="review-panel" id="schedule-year">
+      <div class="review-controls">
+        <select id="scheduleYearOnly"></select>
+        <button class="btn-secondary" id="scheduleYearShow">表示</button>
+      </div>
+      <div id="scheduleYearResult"></div>
+    </div>
   </section>
 
   <section id="tab-review" class="tab-panel">
@@ -388,8 +465,10 @@ function resizeImage(file, maxDim = 1280, quality = 0.75) {
 let diaryEntries = [];
 let gardenEntries = [];
 let allPhotos = [];
+let scheduleEvents = [];
 let unsubEntries = null;
 let unsubPhotos = null;
+let unsubSchedule = null;
 
 function entriesOf(section) { return section === 'garden' ? gardenEntries : diaryEntries; }
 function getPhotosForEntry(entryKey) {
@@ -432,11 +511,16 @@ function startListeners() {
     allPhotos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     await refreshAllViews();
   });
+  unsubSchedule = onSnapshot(collection(db, 'schedule'), async (snap) => {
+    scheduleEvents = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    await refreshAllViews();
+  });
 }
 function stopListeners() {
   if (unsubEntries) { unsubEntries(); unsubEntries = null; }
   if (unsubPhotos) { unsubPhotos(); unsubPhotos = null; }
-  diaryEntries = []; gardenEntries = []; allPhotos = [];
+  if (unsubSchedule) { unsubSchedule(); unsubSchedule = null; }
+  diaryEntries = []; gardenEntries = []; allPhotos = []; scheduleEvents = [];
 }
 async function refreshAllViews() {
   await render('diary');
@@ -445,6 +529,8 @@ async function refreshAllViews() {
   await showWeekReview();
   await showMonthReview();
   await showYearReview();
+  renderScheduleMonth();
+  showScheduleYearReview();
 }
 
 /* ---------- Section markup template (diary & garden share this) ---------- */
@@ -890,12 +976,22 @@ document.getElementById('lightboxNext').addEventListener('click', () => {
 });
 
 /* ---------- Review tab ---------- */
-document.querySelectorAll('.review-subnav button').forEach(btn => {
+document.querySelectorAll('.review-subnav:not(.schedule-subnav) button').forEach(btn => {
   btn.addEventListener('click', () => {
-    document.querySelectorAll('.review-subnav button').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.review-subnav:not(.schedule-subnav) button').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    document.querySelectorAll('.review-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('#tab-review .review-panel').forEach(p => p.classList.remove('active'));
     document.getElementById('review-' + btn.dataset.review).classList.add('active');
+  });
+});
+
+/* ---------- Schedule sub-nav ---------- */
+document.querySelectorAll('.schedule-subnav button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.schedule-subnav button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('#tab-schedule .review-panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('schedule-' + btn.dataset.schedule).classList.add('active');
   });
 });
 
@@ -971,9 +1067,175 @@ function populateReviewControls() {
 }
 populateReviewControls();
 
+/* ---------- Schedule (monthly calendar + yearly overview) ---------- */
+let calYear = new Date().getFullYear();
+let calMonth = new Date().getMonth() + 1;
+let selectedScheduleDate = null;
+
+function populateScheduleControls() {
+  const y = new Date().getFullYear();
+  const years = []; for (let i = -1; i <= 9; i++) years.push(y + i);
+  const yearOpts = years.map(v => `<option value="${v}">${v}年</option>`).join('');
+  document.getElementById('scheduleCalYear').innerHTML = yearOpts;
+  document.getElementById('scheduleYearOnly').innerHTML = yearOpts;
+  document.getElementById('scheduleCalMonth').innerHTML =
+    Array.from({ length: 12 }, (_, i) => `<option value="${i + 1}">${i + 1}月</option>`).join('');
+  document.getElementById('scheduleCalYear').value = calYear;
+  document.getElementById('scheduleCalMonth').value = calMonth;
+  document.getElementById('scheduleYearOnly').value = calYear;
+}
+populateScheduleControls();
+
+function renderScheduleMonth() {
+  const grid = document.getElementById('scheduleCalendarGrid');
+  if (!grid) return;
+  const weekdayNames = ['日', '月', '火', '水', '木', '金', '土'];
+  let html = weekdayNames.map(w => `<div class="cal-weekday">${w}</div>`).join('');
+
+  const firstDay = new Date(calYear, calMonth - 1, 1);
+  const daysInMonth = new Date(calYear, calMonth, 0).getDate();
+  const startWeekday = firstDay.getDay();
+  const today = todayStr();
+
+  for (let i = 0; i < startWeekday; i++) html += '<div class="cal-day empty"></div>';
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${calYear}-${pad(calMonth)}-${pad(d)}`;
+    const dayEvents = scheduleEvents.filter(ev => ev.date === dateStr).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+    const maxShow = 2;
+    const chips = dayEvents.slice(0, maxShow).map(ev => `<div class="cal-event-chip">${escapeHtml(ev.title)}</div>`).join('')
+      + (dayEvents.length > maxShow ? `<div class="cal-event-chip">+${dayEvents.length - maxShow}件</div>` : '');
+    const classes = ['cal-day'];
+    if (dateStr === today) classes.push('today');
+    if (dateStr === selectedScheduleDate) classes.push('selected');
+    html += `<div class="${classes.join(' ')}" data-date="${dateStr}"><div class="cal-daynum">${d}</div>${chips}</div>`;
+  }
+  grid.innerHTML = html;
+  grid.querySelectorAll('.cal-day:not(.empty)').forEach(cell => {
+    cell.addEventListener('click', () => openScheduleDay(cell.dataset.date));
+  });
+}
+
+function openScheduleDay(dateStr) {
+  selectedScheduleDate = dateStr;
+  renderScheduleMonth();
+  document.getElementById('scheduleSelectedDate').value = dateStr;
+  document.getElementById('scheduleEditingId').value = '';
+  document.getElementById('scheduleEntryTitle').value = '';
+  document.getElementById('scheduleEntryNote').value = '';
+  document.getElementById('scheduleFormDateLabel').textContent = formatDateJp(dateStr) + ' の予定';
+  document.getElementById('scheduleEntryForm').classList.add('open');
+
+  const panel = document.getElementById('scheduleDayPanel');
+  const dayEvents = scheduleEvents.filter(ev => ev.date === dateStr).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  panel.innerHTML = '';
+  for (const ev of dayEvents) {
+    const card = document.createElement('div');
+    card.className = 'entry-card';
+    card.dataset.section = 'schedule';
+    card.innerHTML = `
+      <div class="entry-title">${escapeHtml(ev.title)}</div>
+      ${ev.note ? `<div class="entry-body">${escapeHtml(ev.note)}</div>` : ''}
+      <div class="entry-actions">
+        <button class="btn-secondary sched-edit-btn">編集</button>
+        <button class="btn-danger sched-delete-btn">削除</button>
+      </div>
+    `;
+    card.querySelector('.sched-edit-btn').addEventListener('click', () => {
+      document.getElementById('scheduleEditingId').value = ev.id;
+      document.getElementById('scheduleEntryTitle').value = ev.title || '';
+      document.getElementById('scheduleEntryNote').value = ev.note || '';
+      document.getElementById('scheduleEntryForm').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+    card.querySelector('.sched-delete-btn').addEventListener('click', async () => {
+      if (!confirm('この予定を削除しますか？')) return;
+      await deleteDoc(doc(db, 'schedule', ev.id));
+    });
+    panel.appendChild(card);
+  }
+}
+
+document.getElementById('scheduleCancelBtn').addEventListener('click', () => {
+  document.getElementById('scheduleEntryForm').classList.remove('open');
+  document.getElementById('scheduleDayPanel').innerHTML = '';
+  selectedScheduleDate = null;
+  renderScheduleMonth();
+});
+document.getElementById('scheduleSaveBtn').addEventListener('click', async () => {
+  const date = document.getElementById('scheduleSelectedDate').value;
+  const title = document.getElementById('scheduleEntryTitle').value.trim();
+  const note = document.getElementById('scheduleEntryNote').value.trim();
+  if (!title) { alert('タイトルを入力してください。'); return; }
+  const editingId = document.getElementById('scheduleEditingId').value;
+  const id = editingId || uid();
+  const existing = editingId ? scheduleEvents.find(e => e.id === id) : null;
+  await setDoc(doc(db, 'schedule', id), { date, title, note, createdAt: existing ? existing.createdAt : Date.now() });
+  document.getElementById('scheduleEditingId').value = '';
+  document.getElementById('scheduleEntryTitle').value = '';
+  document.getElementById('scheduleEntryNote').value = '';
+});
+
+document.getElementById('calPrevMonth').addEventListener('click', () => {
+  calMonth--; if (calMonth < 1) { calMonth = 12; calYear--; }
+  document.getElementById('scheduleCalYear').value = calYear;
+  document.getElementById('scheduleCalMonth').value = calMonth;
+  renderScheduleMonth();
+});
+document.getElementById('calNextMonth').addEventListener('click', () => {
+  calMonth++; if (calMonth > 12) { calMonth = 1; calYear++; }
+  document.getElementById('scheduleCalYear').value = calYear;
+  document.getElementById('scheduleCalMonth').value = calMonth;
+  renderScheduleMonth();
+});
+document.getElementById('scheduleCalYear').addEventListener('change', (e) => {
+  calYear = parseInt(e.target.value, 10);
+  renderScheduleMonth();
+});
+document.getElementById('scheduleCalMonth').addEventListener('change', (e) => {
+  calMonth = parseInt(e.target.value, 10);
+  renderScheduleMonth();
+});
+
+function showScheduleYearReview() {
+  const yearEl = document.getElementById('scheduleYearOnly');
+  if (!yearEl) return;
+  const year = yearEl.value || calYear;
+  const all = scheduleEvents.filter(e => e.date.startsWith(`${year}-`)).sort((a, b) => a.date.localeCompare(b.date));
+  const counts = Array(12).fill(0);
+  all.forEach(e => { counts[parseInt(e.date.split('-')[1], 10) - 1]++; });
+  const container = document.getElementById('scheduleYearResult');
+  container.innerHTML = `<div class="month-grid">${counts.map((c, i) => `
+    <div class="month-cell"><div class="month-label">${i + 1}月</div><div class="month-count">${c}件</div></div>
+  `).join('')}</div>`;
+  if (!all.length) { container.innerHTML += '<div class="empty-state">この年の予定はまだありません。</div>'; return; }
+  for (const ev of all) {
+    const card = document.createElement('div');
+    card.className = 'entry-card';
+    card.dataset.section = 'schedule';
+    card.innerHTML = `
+      <div class="entry-date">🗓️ ${formatDateJp(ev.date)}</div>
+      <div class="entry-title">${escapeHtml(ev.title)}</div>
+      ${ev.note ? `<div class="entry-body">${escapeHtml(ev.note)}</div>` : ''}
+    `;
+    card.addEventListener('click', () => {
+      calYear = parseInt(ev.date.split('-')[0], 10);
+      calMonth = parseInt(ev.date.split('-')[1], 10);
+      document.getElementById('scheduleCalYear').value = calYear;
+      document.getElementById('scheduleCalMonth').value = calMonth;
+      document.querySelectorAll('.schedule-subnav button').forEach(b => b.classList.remove('active'));
+      document.querySelector('.schedule-subnav button[data-schedule="month"]').classList.add('active');
+      document.querySelectorAll('#tab-schedule .review-panel').forEach(p => p.classList.remove('active'));
+      document.getElementById('schedule-month').classList.add('active');
+      renderScheduleMonth();
+      openScheduleDay(ev.date);
+    });
+    container.appendChild(card);
+  }
+}
+document.getElementById('scheduleYearShow').addEventListener('click', showScheduleYearReview);
+
 /* ---------- Backup (safety export/import, cloud remains source of truth) ---------- */
 document.getElementById('exportBtn').addEventListener('click', () => {
-  const payload = { diaryEntries, gardenEntries, photos: allPhotos, exportedAt: new Date().toISOString() };
+  const payload = { diaryEntries, gardenEntries, photos: allPhotos, scheduleEvents, exportedAt: new Date().toISOString() };
   const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -999,15 +1261,18 @@ document.getElementById('importFile').addEventListener('change', (e) => {
         ...(data.gardenEntries || []).map(en => ({ ...en, section: 'garden' }))
       ];
       const importedPhotos = data.photos || [];
-      if (!confirm(`日記・園芸あわせて${importedEntries.length}件、写真${importedPhotos.length}枚を読み込みます。現在のクラウド上のデータは上書きされます。よろしいですか？`)) return;
+      const importedSchedule = data.scheduleEvents || [];
+      if (!confirm(`日記・園芸あわせて${importedEntries.length}件、写真${importedPhotos.length}枚、予定${importedSchedule.length}件を読み込みます。現在のクラウド上のデータは上書きされます。よろしいですか？`)) return;
 
       const existingEntries = await getDocs(collection(db, 'entries'));
       const existingPhotos = await getDocs(collection(db, 'photos'));
+      const existingSchedule = await getDocs(collection(db, 'schedule'));
       let batch = writeBatch(db);
       let ops = 0;
       const flushIfNeeded = async () => { if (ops >= 400) { await batch.commit(); batch = writeBatch(db); ops = 0; } };
       for (const d of existingEntries.docs) { batch.delete(d.ref); ops++; await flushIfNeeded(); }
       for (const d of existingPhotos.docs) { batch.delete(d.ref); ops++; await flushIfNeeded(); }
+      for (const d of existingSchedule.docs) { batch.delete(d.ref); ops++; await flushIfNeeded(); }
       await batch.commit();
 
       batch = writeBatch(db); ops = 0;
@@ -1015,7 +1280,7 @@ document.getElementById('importFile').addEventListener('change', (e) => {
         const id = en.id || uid();
         batch.set(doc(db, 'entries', id), {
           section: en.section, date: en.date, title: en.title || '', body: en.body || '',
-          createdAt: en.createdAt || Date.now()
+          category: en.category || '', createdAt: en.createdAt || Date.now()
         });
         ops++; await flushIfNeeded();
       }
@@ -1025,6 +1290,14 @@ document.getElementById('importFile').addEventListener('change', (e) => {
           entryId: p.entryId, section: p.section, entryKey: p.entryKey,
           caption: p.caption || '', order: p.order || 0, dataUrl: p.dataUrl,
           createdAt: p.createdAt || Date.now()
+        });
+        ops++; await flushIfNeeded();
+      }
+      for (const ev of importedSchedule) {
+        const id = ev.id || uid();
+        batch.set(doc(db, 'schedule', id), {
+          date: ev.date, title: ev.title || '', note: ev.note || '',
+          createdAt: ev.createdAt || Date.now()
         });
         ops++; await flushIfNeeded();
       }
