@@ -139,6 +139,16 @@
   .entry-card[data-section="garden"] .entry-date { color: var(--accent-garden-dark); }
   .entry-card:hover { box-shadow: 0 4px 12px rgba(255, 122, 162, 0.15); }
   .entry-date { font-size: 0.8rem; color: var(--accent-dark); font-weight: 800; margin-bottom: 4px; }
+  .category-badge {
+    display: inline-block; background: var(--border-garden); color: var(--accent-garden-dark);
+    border-radius: 999px; padding: 2px 10px; font-size: 0.7rem; font-weight: 700; margin-left: 8px;
+  }
+  .category-chips { display: flex; gap: 6px; flex-wrap: wrap; margin: -8px 0 16px; }
+  .category-chip {
+    background: #fff; border: 2px solid var(--border-garden); color: var(--accent-garden-dark);
+    border-radius: 999px; padding: 5px 14px; font-size: 0.8rem; font-weight: 700; box-shadow: none;
+  }
+  .category-chip.active { background: var(--accent-garden); border-color: var(--accent-garden); color: #fff; }
   .entry-title { font-size: 1.05rem; font-weight: 800; margin-bottom: 6px; }
   .entry-body {
     color: var(--text); font-size: 0.9rem; line-height: 1.65; white-space: pre-wrap;
@@ -445,10 +455,15 @@ function sectionTemplate(section, cfg) {
       <input type="text" id="${section}SearchInput" placeholder="${cfg.searchPlaceholder}">
       <button class="btn-primary" id="${section}NewBtn">${cfg.newLabel}</button>
     </div>
+    ${cfg.showCategory ? `<div class="category-chips" id="${section}CategoryChips"></div>` : ''}
     <div class="entry-form" id="${section}EntryForm">
       <input type="hidden" id="${section}EditingId">
       <label>日付</label>
       <input type="date" id="${section}EntryDate">
+      ${cfg.showCategory ? `
+      <label>カテゴリ（例：バラ、ペチュニア）</label>
+      <input type="text" id="${section}EntryCategory" placeholder="植物の種類など（空欄でもOK）">
+      ` : ''}
       <label>タイトル（任意）</label>
       <input type="text" id="${section}EntryTitle" placeholder="${cfg.titlePlaceholder}">
       <label>${cfg.bodyLabel}</label>
@@ -478,6 +493,7 @@ document.getElementById('tab-diary-body').innerHTML = sectionTemplate('diary', {
 });
 document.getElementById('tab-garden-body').innerHTML = sectionTemplate('garden', {
   showOnThisDay: false,
+  showCategory: true,
   searchPlaceholder: '植物名やキーワードで検索',
   newLabel: '＋ 新しい記録',
   titlePlaceholder: '例：トマトの様子',
@@ -493,9 +509,11 @@ const removedPhotoIds = { diary: [], garden: [] };
 function openForm(section, entry) {
   document.getElementById(`${section}EntryForm`).classList.add('open');
   removedPhotoIds[section] = [];
+  const categoryEl = document.getElementById(`${section}EntryCategory`);
   if (entry) {
     document.getElementById(`${section}EditingId`).value = entry.id;
     document.getElementById(`${section}EntryDate`).value = entry.date;
+    if (categoryEl) categoryEl.value = entry.category || '';
     document.getElementById(`${section}EntryTitle`).value = entry.title || '';
     document.getElementById(`${section}EntryBody`).value = entry.body || '';
     const photos = getPhotosForEntry(`${section}_${entry.id}`);
@@ -503,6 +521,7 @@ function openForm(section, entry) {
   } else {
     document.getElementById(`${section}EditingId`).value = '';
     document.getElementById(`${section}EntryDate`).value = todayStr();
+    if (categoryEl) categoryEl.value = '';
     document.getElementById(`${section}EntryTitle`).value = '';
     document.getElementById(`${section}EntryBody`).value = '';
     formPhotos[section] = [];
@@ -542,6 +561,8 @@ async function saveEntry(section) {
   const date = document.getElementById(`${section}EntryDate`).value || todayStr();
   const title = document.getElementById(`${section}EntryTitle`).value.trim();
   const body = document.getElementById(`${section}EntryBody`).value.trim();
+  const categoryEl = document.getElementById(`${section}EntryCategory`);
+  const category = categoryEl ? categoryEl.value.trim() : '';
   if (!body) { alert('本文を入力してください。'); return; }
 
   const editingId = document.getElementById(`${section}EditingId`).value;
@@ -549,7 +570,7 @@ async function saveEntry(section) {
   const existing = editingId ? entriesOf(section).find(e => e.id === id) : null;
 
   await setDoc(doc(db, 'entries', id), {
-    section, date, title, body,
+    section, date, title, body, category,
     createdAt: existing ? existing.createdAt : Date.now()
   });
 
@@ -586,7 +607,7 @@ async function buildEntryCard(entry, section, opts = {}) {
     ? `<div class="photo-strip">${photos.map((p, i) => `<img data-idx="${i}" class="thumb" src="${p.dataUrl}">`).join('')}</div>`
     : '';
   card.innerHTML = `
-    <div class="entry-date">${icon} ${formatDateJp(entry.date)}</div>
+    <div class="entry-date">${icon} ${formatDateJp(entry.date)}${entry.category ? `<span class="category-badge">${escapeHtml(entry.category)}</span>` : ''}</div>
     ${entry.title ? `<div class="entry-title">${escapeHtml(entry.title)}</div>` : ''}
     <div class="entry-body">${escapeHtml(entry.body)}</div>
     ${photosHtml}
@@ -643,7 +664,7 @@ async function buildCombinedCard(diaryEntry, gardenCompanions, opts = {}) {
       : '';
     return `
       <div class="companion-block">
-        <div class="companion-label">🌱 同じ日の園芸記録</div>
+        <div class="companion-label">🌱 同じ日の園芸記録${g.category ? `<span class="category-badge">${escapeHtml(g.category)}</span>` : ''}</div>
         ${g.title ? `<div class="entry-title">${escapeHtml(g.title)}</div>` : ''}
         <div class="entry-body">${escapeHtml(g.body)}</div>
         ${gPhotosHtml}
@@ -734,6 +755,25 @@ async function buildGroupedCards(taggedEntries, opts = {}) {
   return cards;
 }
 
+function renderCategoryChips(section) {
+  const container = document.getElementById(`${section}CategoryChips`);
+  if (!container) return;
+  const categories = [...new Set(entriesOf(section).map(e => (e.category || '').trim()).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, 'ja'));
+  const searchInput = document.getElementById(`${section}SearchInput`);
+  const currentKeyword = searchInput.value.trim();
+  if (!categories.length) { container.innerHTML = ''; return; }
+  container.innerHTML = categories.map(c => `
+    <button type="button" class="category-chip${c === currentKeyword ? ' active' : ''}" data-cat="${escapeHtml(c)}">${escapeHtml(c)}</button>
+  `).join('');
+  container.querySelectorAll('.category-chip').forEach(btn => {
+    btn.addEventListener('click', () => {
+      searchInput.value = (searchInput.value.trim() === btn.dataset.cat) ? '' : btn.dataset.cat;
+      render(section);
+    });
+  });
+}
+
 async function render(section) {
   const keyword = document.getElementById(`${section}SearchInput`).value.trim().toLowerCase();
   let filtered = entriesOf(section).slice()
@@ -742,9 +782,11 @@ async function render(section) {
     filtered = filtered.filter(e =>
       (e.title || '').toLowerCase().includes(keyword) ||
       (e.body || '').toLowerCase().includes(keyword) ||
+      (e.category || '').toLowerCase().includes(keyword) ||
       e.date.includes(keyword)
     );
   }
+  renderCategoryChips(section);
   const listEl = document.getElementById(`${section}EntryList`);
   const emptyEl = document.getElementById(`${section}EmptyState`);
   listEl.innerHTML = '';
