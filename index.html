@@ -204,6 +204,13 @@
     padding: 1px 4px; font-size: 0.65rem; font-weight: 700; overflow: hidden; text-overflow: ellipsis;
     white-space: nowrap;
   }
+  .cal-event-bar {
+    background: var(--accent-schedule); color: #fff; border-radius: 6px;
+    padding: 1px 4px; font-size: 0.65rem; font-weight: 700; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .cal-event-bar.bar-cont-left { border-top-left-radius: 0; border-bottom-left-radius: 0; }
+  .cal-event-bar.bar-cont-right { border-top-right-radius: 0; border-bottom-right-radius: 0; }
   .schedule-form-date { font-weight: 800; color: var(--accent-schedule-dark); margin-bottom: 8px; }
   #scheduleEntryForm { border-color: var(--border-schedule); }
   #scheduleEntryForm input, #scheduleEntryForm textarea { border-color: var(--border-schedule); }
@@ -306,8 +313,11 @@
 
       <div class="entry-form" id="scheduleEntryForm">
         <input type="hidden" id="scheduleEditingId">
-        <input type="hidden" id="scheduleSelectedDate">
         <div class="schedule-form-date" id="scheduleFormDateLabel"></div>
+        <label>開始日</label>
+        <input type="date" id="scheduleStartDate">
+        <label>終了日（連続する予定の場合。1日だけなら空欄でOK）</label>
+        <input type="date" id="scheduleEndDate">
         <label>タイトル</label>
         <input type="text" id="scheduleEntryTitle" placeholder="例：病院の予約">
         <label>メモ（任意）</label>
@@ -1086,6 +1096,9 @@ function populateScheduleControls() {
 }
 populateScheduleControls();
 
+function eventEndDate(ev) { return ev.endDate || ev.date; }
+function eventSpansDate(ev, dateStr) { return ev.date <= dateStr && eventEndDate(ev) >= dateStr; }
+
 function renderScheduleMonth() {
   const grid = document.getElementById('scheduleCalendarGrid');
   if (!grid) return;
@@ -1100,14 +1113,27 @@ function renderScheduleMonth() {
   for (let i = 0; i < startWeekday; i++) html += '<div class="cal-day empty"></div>';
   for (let d = 1; d <= daysInMonth; d++) {
     const dateStr = `${calYear}-${pad(calMonth)}-${pad(d)}`;
-    const dayEvents = scheduleEvents.filter(ev => ev.date === dateStr).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+    const colIndex = (startWeekday + d - 1) % 7;
+    const dayEvents = scheduleEvents.filter(ev => eventSpansDate(ev, dateStr))
+      .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
     const maxShow = 2;
-    const chips = dayEvents.slice(0, maxShow).map(ev => `<div class="cal-event-chip">${escapeHtml(ev.title)}</div>`).join('')
-      + (dayEvents.length > maxShow ? `<div class="cal-event-chip">+${dayEvents.length - maxShow}件</div>` : '');
+    const shown = dayEvents.slice(0, maxShow).map(ev => {
+      const isMulti = eventEndDate(ev) !== ev.date;
+      if (!isMulti) return `<div class="cal-event-chip">${escapeHtml(ev.title)}</div>`;
+      const isStart = ev.date === dateStr;
+      const isEnd = eventEndDate(ev) === dateStr;
+      const roundLeft = isStart || colIndex === 0;
+      const roundRight = isEnd || colIndex === 6;
+      const classes = ['cal-event-bar'];
+      if (!roundLeft) classes.push('bar-cont-left');
+      if (!roundRight) classes.push('bar-cont-right');
+      const label = (isStart || colIndex === 0) ? escapeHtml(ev.title) : '';
+      return `<div class="${classes.join(' ')}">${label}</div>`;
+    }).join('') + (dayEvents.length > maxShow ? `<div class="cal-event-chip">+${dayEvents.length - maxShow}件</div>` : '');
     const classes = ['cal-day'];
     if (dateStr === today) classes.push('today');
     if (dateStr === selectedScheduleDate) classes.push('selected');
-    html += `<div class="${classes.join(' ')}" data-date="${dateStr}"><div class="cal-daynum">${d}</div>${chips}</div>`;
+    html += `<div class="${classes.join(' ')}" data-date="${dateStr}"><div class="cal-daynum">${d}</div>${shown}</div>`;
   }
   grid.innerHTML = html;
   grid.querySelectorAll('.cal-day:not(.empty)').forEach(cell => {
@@ -1118,21 +1144,27 @@ function renderScheduleMonth() {
 function openScheduleDay(dateStr) {
   selectedScheduleDate = dateStr;
   renderScheduleMonth();
-  document.getElementById('scheduleSelectedDate').value = dateStr;
   document.getElementById('scheduleEditingId').value = '';
+  document.getElementById('scheduleStartDate').value = dateStr;
+  document.getElementById('scheduleEndDate').value = '';
   document.getElementById('scheduleEntryTitle').value = '';
   document.getElementById('scheduleEntryNote').value = '';
   document.getElementById('scheduleFormDateLabel').textContent = formatDateJp(dateStr) + ' の予定';
   document.getElementById('scheduleEntryForm').classList.add('open');
 
   const panel = document.getElementById('scheduleDayPanel');
-  const dayEvents = scheduleEvents.filter(ev => ev.date === dateStr).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  const dayEvents = scheduleEvents.filter(ev => eventSpansDate(ev, dateStr))
+    .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
   panel.innerHTML = '';
   for (const ev of dayEvents) {
     const card = document.createElement('div');
     card.className = 'entry-card';
     card.dataset.section = 'schedule';
+    const rangeLabel = eventEndDate(ev) !== ev.date
+      ? `${formatDateJp(ev.date)} 〜 ${formatDateJp(eventEndDate(ev))}`
+      : formatDateJp(ev.date);
     card.innerHTML = `
+      <div class="entry-date">🗓️ ${rangeLabel}</div>
       <div class="entry-title">${escapeHtml(ev.title)}</div>
       ${ev.note ? `<div class="entry-body">${escapeHtml(ev.note)}</div>` : ''}
       <div class="entry-actions">
@@ -1142,6 +1174,8 @@ function openScheduleDay(dateStr) {
     `;
     card.querySelector('.sched-edit-btn').addEventListener('click', () => {
       document.getElementById('scheduleEditingId').value = ev.id;
+      document.getElementById('scheduleStartDate').value = ev.date;
+      document.getElementById('scheduleEndDate').value = eventEndDate(ev) !== ev.date ? eventEndDate(ev) : '';
       document.getElementById('scheduleEntryTitle').value = ev.title || '';
       document.getElementById('scheduleEntryNote').value = ev.note || '';
       document.getElementById('scheduleEntryForm').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -1161,15 +1195,23 @@ document.getElementById('scheduleCancelBtn').addEventListener('click', () => {
   renderScheduleMonth();
 });
 document.getElementById('scheduleSaveBtn').addEventListener('click', async () => {
-  const date = document.getElementById('scheduleSelectedDate').value;
+  const startDate = document.getElementById('scheduleStartDate').value;
+  const endDateInput = document.getElementById('scheduleEndDate').value;
   const title = document.getElementById('scheduleEntryTitle').value.trim();
   const note = document.getElementById('scheduleEntryNote').value.trim();
+  if (!startDate) { alert('開始日を入力してください。'); return; }
   if (!title) { alert('タイトルを入力してください。'); return; }
+  const endDate = endDateInput || startDate;
+  if (endDate < startDate) { alert('終了日は開始日より後の日付にしてください。'); return; }
   const editingId = document.getElementById('scheduleEditingId').value;
   const id = editingId || uid();
   const existing = editingId ? scheduleEvents.find(e => e.id === id) : null;
-  await setDoc(doc(db, 'schedule', id), { date, title, note, createdAt: existing ? existing.createdAt : Date.now() });
+  await setDoc(doc(db, 'schedule', id), {
+    date: startDate, endDate, title, note,
+    createdAt: existing ? existing.createdAt : Date.now()
+  });
   document.getElementById('scheduleEditingId').value = '';
+  document.getElementById('scheduleEndDate').value = '';
   document.getElementById('scheduleEntryTitle').value = '';
   document.getElementById('scheduleEntryNote').value = '';
 });
@@ -1211,8 +1253,11 @@ function showScheduleYearReview() {
     const card = document.createElement('div');
     card.className = 'entry-card';
     card.dataset.section = 'schedule';
+    const rangeLabel = eventEndDate(ev) !== ev.date
+      ? `${formatDateJp(ev.date)} 〜 ${formatDateJp(eventEndDate(ev))}`
+      : formatDateJp(ev.date);
     card.innerHTML = `
-      <div class="entry-date">🗓️ ${formatDateJp(ev.date)}</div>
+      <div class="entry-date">🗓️ ${rangeLabel}</div>
       <div class="entry-title">${escapeHtml(ev.title)}</div>
       ${ev.note ? `<div class="entry-body">${escapeHtml(ev.note)}</div>` : ''}
     `;
