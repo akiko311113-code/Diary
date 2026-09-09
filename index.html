@@ -211,6 +211,12 @@
   }
   .cal-event-bar.bar-cont-left { border-top-left-radius: 0; border-bottom-left-radius: 0; }
   .cal-event-bar.bar-cont-right { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+  .category-legend { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+  .category-legend-item { display: flex; align-items: center; gap: 5px; font-size: 0.78rem; font-weight: 700; color: var(--sub); }
+  .category-legend-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+  .schedule-category-badge {
+    display: inline-block; border-radius: 999px; padding: 2px 10px; font-size: 0.7rem; font-weight: 700; margin-left: 8px;
+  }
   .schedule-form-date { font-weight: 800; color: var(--accent-schedule-dark); margin-bottom: 8px; }
   #scheduleEntryForm { border-color: var(--border-schedule); }
   #scheduleEntryForm input, #scheduleEntryForm textarea { border-color: var(--border-schedule); }
@@ -309,6 +315,7 @@
         <select id="scheduleCalMonth"></select>
         <button class="btn-secondary" id="calNextMonth">翌月 ›</button>
       </div>
+      <div class="category-legend" id="scheduleCategoryLegend"></div>
       <div class="calendar-grid" id="scheduleCalendarGrid"></div>
 
       <div class="entry-form" id="scheduleEntryForm">
@@ -318,6 +325,8 @@
         <input type="date" id="scheduleStartDate">
         <label>終了日（連続する予定の場合。1日だけなら空欄でOK）</label>
         <input type="date" id="scheduleEndDate">
+        <label>カテゴリ（色分け）</label>
+        <select id="scheduleCategorySelect"></select>
         <label>タイトル</label>
         <input type="text" id="scheduleEntryTitle" placeholder="例：病院の予約">
         <label>メモ（任意）</label>
@@ -1141,6 +1150,15 @@ let calYear = new Date().getFullYear();
 let calMonth = new Date().getMonth() + 1;
 let selectedScheduleDate = null;
 
+const SCHEDULE_CATEGORIES = [
+  { id: 'cat1', name: '小豆島', bg: '#2bb3a3', text: '#ffffff' },
+  { id: 'cat2', name: 'カテゴリ2', bg: '#f39c3d', text: '#ffffff' },
+  { id: 'cat3', name: 'カテゴリ3', bg: '#b072e0', text: '#ffffff' },
+  { id: 'cat4', name: 'カテゴリ4', bg: '#d64545', text: '#ffffff' },
+  { id: 'cat5', name: 'カテゴリ5', bg: '#4a5fc1', text: '#ffffff' }
+];
+function scheduleCategoryOf(ev) { return SCHEDULE_CATEGORIES.find(c => c.id === ev.categoryId) || null; }
+
 function populateScheduleControls() {
   const y = new Date().getFullYear();
   const years = []; for (let i = -1; i <= 9; i++) years.push(y + i);
@@ -1152,6 +1170,14 @@ function populateScheduleControls() {
   document.getElementById('scheduleCalYear').value = calYear;
   document.getElementById('scheduleCalMonth').value = calMonth;
   document.getElementById('scheduleYearOnly').value = calYear;
+
+  document.getElementById('scheduleCategorySelect').innerHTML =
+    '<option value="">（なし）</option>' +
+    SCHEDULE_CATEGORIES.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+
+  document.getElementById('scheduleCategoryLegend').innerHTML = SCHEDULE_CATEGORIES.map(c => `
+    <div class="category-legend-item"><span class="category-legend-dot" style="background:${c.bg}"></span>${escapeHtml(c.name)}</div>
+  `).join('');
 }
 populateScheduleControls();
 
@@ -1177,8 +1203,10 @@ function renderScheduleMonth() {
       .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
     const maxShow = 2;
     const shown = dayEvents.slice(0, maxShow).map(ev => {
+      const cat = scheduleCategoryOf(ev);
+      const colorStyle = cat ? ` style="background:${cat.bg};color:${cat.text}"` : '';
       const isMulti = eventEndDate(ev) !== ev.date;
-      if (!isMulti) return `<div class="cal-event-chip">${escapeHtml(ev.title)}</div>`;
+      if (!isMulti) return `<div class="cal-event-chip"${colorStyle}>${escapeHtml(ev.title)}</div>`;
       const isStart = ev.date === dateStr;
       const isEnd = eventEndDate(ev) === dateStr;
       const roundLeft = isStart || colIndex === 0;
@@ -1187,7 +1215,7 @@ function renderScheduleMonth() {
       if (!roundLeft) classes.push('bar-cont-left');
       if (!roundRight) classes.push('bar-cont-right');
       const label = (isStart || colIndex === 0) ? escapeHtml(ev.title) : '';
-      return `<div class="${classes.join(' ')}">${label}</div>`;
+      return `<div class="${classes.join(' ')}"${colorStyle}>${label}</div>`;
     }).join('') + (dayEvents.length > maxShow ? `<div class="cal-event-chip">+${dayEvents.length - maxShow}件</div>` : '');
     const classes = ['cal-day'];
     if (dateStr === today) classes.push('today');
@@ -1206,6 +1234,7 @@ function openScheduleDay(dateStr) {
   document.getElementById('scheduleEditingId').value = '';
   document.getElementById('scheduleStartDate').value = dateStr;
   document.getElementById('scheduleEndDate').value = '';
+  document.getElementById('scheduleCategorySelect').value = '';
   document.getElementById('scheduleEntryTitle').value = '';
   document.getElementById('scheduleEntryNote').value = '';
   document.getElementById('scheduleFormDateLabel').textContent = formatDateJp(dateStr) + ' の予定';
@@ -1222,8 +1251,10 @@ function openScheduleDay(dateStr) {
     const rangeLabel = eventEndDate(ev) !== ev.date
       ? `${formatDateJp(ev.date)} 〜 ${formatDateJp(eventEndDate(ev))}`
       : formatDateJp(ev.date);
+    const cat = scheduleCategoryOf(ev);
+    const catBadge = cat ? `<span class="schedule-category-badge" style="background:${cat.bg};color:${cat.text}">${escapeHtml(cat.name)}</span>` : '';
     card.innerHTML = `
-      <div class="entry-date">🗓️ ${rangeLabel}</div>
+      <div class="entry-date">🗓️ ${rangeLabel}${catBadge}</div>
       <div class="entry-title">${escapeHtml(ev.title)}</div>
       ${ev.note ? `<div class="entry-body">${escapeHtml(ev.note)}</div>` : ''}
       <div class="entry-actions">
@@ -1235,6 +1266,7 @@ function openScheduleDay(dateStr) {
       document.getElementById('scheduleEditingId').value = ev.id;
       document.getElementById('scheduleStartDate').value = ev.date;
       document.getElementById('scheduleEndDate').value = eventEndDate(ev) !== ev.date ? eventEndDate(ev) : '';
+      document.getElementById('scheduleCategorySelect').value = ev.categoryId || '';
       document.getElementById('scheduleEntryTitle').value = ev.title || '';
       document.getElementById('scheduleEntryNote').value = ev.note || '';
       document.getElementById('scheduleEntryForm').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -1256,6 +1288,7 @@ document.getElementById('scheduleCancelBtn').addEventListener('click', () => {
 document.getElementById('scheduleSaveBtn').addEventListener('click', async () => {
   const startDate = document.getElementById('scheduleStartDate').value;
   const endDateInput = document.getElementById('scheduleEndDate').value;
+  const categoryId = document.getElementById('scheduleCategorySelect').value;
   const title = document.getElementById('scheduleEntryTitle').value.trim();
   const note = document.getElementById('scheduleEntryNote').value.trim();
   if (!startDate) { alert('開始日を入力してください。'); return; }
@@ -1266,11 +1299,12 @@ document.getElementById('scheduleSaveBtn').addEventListener('click', async () =>
   const id = editingId || uid();
   const existing = editingId ? scheduleEvents.find(e => e.id === id) : null;
   await setDoc(doc(db, 'schedule', id), {
-    date: startDate, endDate, title, note,
+    date: startDate, endDate, categoryId, title, note,
     createdAt: existing ? existing.createdAt : Date.now()
   });
   document.getElementById('scheduleEditingId').value = '';
   document.getElementById('scheduleEndDate').value = '';
+  document.getElementById('scheduleCategorySelect').value = '';
   document.getElementById('scheduleEntryTitle').value = '';
   document.getElementById('scheduleEntryNote').value = '';
 });
@@ -1315,8 +1349,10 @@ function showScheduleYearReview() {
     const rangeLabel = eventEndDate(ev) !== ev.date
       ? `${formatDateJp(ev.date)} 〜 ${formatDateJp(eventEndDate(ev))}`
       : formatDateJp(ev.date);
+    const cat = scheduleCategoryOf(ev);
+    const catBadge = cat ? `<span class="schedule-category-badge" style="background:${cat.bg};color:${cat.text}">${escapeHtml(cat.name)}</span>` : '';
     card.innerHTML = `
-      <div class="entry-date">🗓️ ${rangeLabel}</div>
+      <div class="entry-date">🗓️ ${rangeLabel}${catBadge}</div>
       <div class="entry-title">${escapeHtml(ev.title)}</div>
       ${ev.note ? `<div class="entry-body">${escapeHtml(ev.note)}</div>` : ''}
     `;
@@ -1400,7 +1436,8 @@ document.getElementById('importFile').addEventListener('change', (e) => {
       for (const ev of importedSchedule) {
         const id = ev.id || uid();
         batch.set(doc(db, 'schedule', id), {
-          date: ev.date, title: ev.title || '', note: ev.note || '',
+          date: ev.date, endDate: ev.endDate || ev.date, categoryId: ev.categoryId || '',
+          title: ev.title || '', note: ev.note || '',
           createdAt: ev.createdAt || Date.now()
         });
         ops++; await flushIfNeeded();
