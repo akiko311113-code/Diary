@@ -217,6 +217,39 @@
   .schedule-category-badge {
     display: inline-block; border-radius: 999px; padding: 2px 10px; font-size: 0.7rem; font-weight: 700; margin-left: 8px;
   }
+
+  .year-glance { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
+  .mini-month {
+    background: #fff; border: 2px solid var(--border-schedule); border-radius: 12px; padding: 8px;
+  }
+  .mini-month-title {
+    font-size: 0.8rem; font-weight: 800; color: var(--accent-schedule-dark);
+    display: flex; justify-content: space-between; align-items: baseline; cursor: pointer; margin-bottom: 4px;
+  }
+  .mini-month-count { font-size: 0.65rem; font-weight: 700; color: var(--sub); }
+  .mini-month-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; }
+  .mini-cal-weekday { font-size: 0.55rem; text-align: center; color: var(--sub); font-weight: 700; }
+  .mini-cal-day {
+    aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    border-radius: 4px; cursor: pointer; gap: 1px;
+  }
+  .mini-cal-day:hover { background: #eaf3fb; }
+  .mini-cal-day.empty { cursor: default; }
+  .mini-cal-daynum { font-size: 0.62rem; color: var(--text); }
+  .mini-cal-day.today .mini-cal-daynum {
+    background: var(--accent-schedule); color: #fff; border-radius: 50%; width: 14px; height: 14px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .mini-cal-dots { display: flex; gap: 1px; height: 4px; }
+  .mini-cal-dot { width: 4px; height: 4px; border-radius: 50%; }
+
+  @media (max-width: 900px) {
+    .year-glance { grid-template-columns: repeat(3, 1fr); }
+  }
+  @media (max-width: 520px) {
+    .year-glance { grid-template-columns: repeat(2, 1fr); }
+    .mini-cal-daynum { font-size: 0.55rem; }
+  }
   .schedule-form-date { font-weight: 800; color: var(--accent-schedule-dark); margin-bottom: 8px; }
   #scheduleEntryForm { border-color: var(--border-schedule); }
   #scheduleEntryForm input, #scheduleEntryForm textarea { border-color: var(--border-schedule); }
@@ -1330,46 +1363,72 @@ document.getElementById('scheduleCalMonth').addEventListener('change', (e) => {
   renderScheduleMonth();
 });
 
+function switchToScheduleMonthView(year, month) {
+  calYear = year; calMonth = month;
+  document.getElementById('scheduleCalYear').value = calYear;
+  document.getElementById('scheduleCalMonth').value = calMonth;
+  document.querySelectorAll('.schedule-subnav button').forEach(b => b.classList.remove('active'));
+  document.querySelector('.schedule-subnav button[data-schedule="month"]').classList.add('active');
+  document.querySelectorAll('#tab-schedule .review-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('schedule-month').classList.add('active');
+  renderScheduleMonth();
+}
+function jumpToScheduleMonthDay(dateStr) {
+  const [y, m] = dateStr.split('-').map(v => parseInt(v, 10));
+  switchToScheduleMonthView(y, m);
+  openScheduleDay(dateStr);
+}
+
+function buildMiniMonthHtml(year, month) {
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const startWeekday = new Date(year, month - 1, 1).getDay();
+  const today = todayStr();
+  const mStart = `${year}-${pad(month)}-01`;
+  const mEnd = `${year}-${pad(month)}-${pad(daysInMonth)}`;
+  const count = scheduleEvents.filter(ev => eventEndDate(ev) >= mStart && ev.date <= mEnd).length;
+
+  let cells = '';
+  for (let i = 0; i < startWeekday; i++) cells += '<div class="mini-cal-day empty"></div>';
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${year}-${pad(month)}-${pad(d)}`;
+    const dayEvents = scheduleEvents.filter(ev => eventSpansDate(ev, dateStr));
+    const dots = dayEvents.slice(0, 3).map(ev => {
+      const cat = scheduleCategoryOf(ev);
+      const color = cat ? cat.bg : 'var(--accent-schedule)';
+      return `<span class="mini-cal-dot" style="background:${color}"></span>`;
+    }).join('');
+    const cls = ['mini-cal-day'];
+    if (dateStr === today) cls.push('today');
+    cells += `<div class="${cls.join(' ')}" data-date="${dateStr}"><span class="mini-cal-daynum">${d}</span><span class="mini-cal-dots">${dots}</span></div>`;
+  }
+
+  return `
+    <div class="mini-month">
+      <div class="mini-month-title" data-year="${year}" data-month="${month}">${month}月<span class="mini-month-count">${count}件</span></div>
+      <div class="mini-month-grid">
+        <div class="mini-cal-weekday">日</div><div class="mini-cal-weekday">月</div><div class="mini-cal-weekday">火</div>
+        <div class="mini-cal-weekday">水</div><div class="mini-cal-weekday">木</div><div class="mini-cal-weekday">金</div>
+        <div class="mini-cal-weekday">土</div>
+        ${cells}
+      </div>
+    </div>
+  `;
+}
+
 function showScheduleYearReview() {
   const yearEl = document.getElementById('scheduleYearOnly');
   if (!yearEl) return;
-  const year = yearEl.value || calYear;
-  const all = scheduleEvents.filter(e => e.date.startsWith(`${year}-`)).sort((a, b) => a.date.localeCompare(b.date));
-  const counts = Array(12).fill(0);
-  all.forEach(e => { counts[parseInt(e.date.split('-')[1], 10) - 1]++; });
+  const year = parseInt(yearEl.value || calYear, 10);
   const container = document.getElementById('scheduleYearResult');
-  container.innerHTML = `<div class="month-grid">${counts.map((c, i) => `
-    <div class="month-cell"><div class="month-label">${i + 1}月</div><div class="month-count">${c}件</div></div>
-  `).join('')}</div>`;
-  if (!all.length) { container.innerHTML += '<div class="empty-state">この年の予定はまだありません。</div>'; return; }
-  for (const ev of all) {
-    const card = document.createElement('div');
-    card.className = 'entry-card';
-    card.dataset.section = 'schedule';
-    const rangeLabel = eventEndDate(ev) !== ev.date
-      ? `${formatDateJp(ev.date)} 〜 ${formatDateJp(eventEndDate(ev))}`
-      : formatDateJp(ev.date);
-    const cat = scheduleCategoryOf(ev);
-    const catBadge = cat ? `<span class="schedule-category-badge" style="background:${cat.bg};color:${cat.text}">${escapeHtml(cat.name)}</span>` : '';
-    card.innerHTML = `
-      <div class="entry-date">🗓️ ${rangeLabel}${catBadge}</div>
-      <div class="entry-title">${escapeHtml(ev.title)}</div>
-      ${ev.note ? `<div class="entry-body">${escapeHtml(ev.note)}</div>` : ''}
-    `;
-    card.addEventListener('click', () => {
-      calYear = parseInt(ev.date.split('-')[0], 10);
-      calMonth = parseInt(ev.date.split('-')[1], 10);
-      document.getElementById('scheduleCalYear').value = calYear;
-      document.getElementById('scheduleCalMonth').value = calMonth;
-      document.querySelectorAll('.schedule-subnav button').forEach(b => b.classList.remove('active'));
-      document.querySelector('.schedule-subnav button[data-schedule="month"]').classList.add('active');
-      document.querySelectorAll('#tab-schedule .review-panel').forEach(p => p.classList.remove('active'));
-      document.getElementById('schedule-month').classList.add('active');
-      renderScheduleMonth();
-      openScheduleDay(ev.date);
-    });
-    container.appendChild(card);
-  }
+  container.innerHTML = `<div class="year-glance">${
+    Array.from({ length: 12 }, (_, i) => buildMiniMonthHtml(year, i + 1)).join('')
+  }</div>`;
+  container.querySelectorAll('.mini-cal-day:not(.empty)').forEach(cell => {
+    cell.addEventListener('click', () => jumpToScheduleMonthDay(cell.dataset.date));
+  });
+  container.querySelectorAll('.mini-month-title').forEach(title => {
+    title.addEventListener('click', () => switchToScheduleMonthView(parseInt(title.dataset.year, 10), parseInt(title.dataset.month, 10)));
+  });
 }
 document.getElementById('scheduleYearShow').addEventListener('click', showScheduleYearReview);
 
