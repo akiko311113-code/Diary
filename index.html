@@ -199,6 +199,8 @@
   .cal-day.today { border-color: var(--accent-schedule); border-width: 3px; }
   .cal-day.selected { background: #eaf3fb; }
   .cal-daynum { font-size: 0.75rem; font-weight: 700; color: var(--text); }
+  .cal-daynum.sunday-color, .cal-weekday.sunday-color { color: #e0524f; }
+  .cal-daynum.saturday-color, .cal-weekday.saturday-color { color: #3d7ab5; }
   .cal-event-chip {
     background: var(--border-schedule); color: var(--accent-schedule-dark); border-radius: 6px;
     padding: 1px 4px; font-size: 0.65rem; font-weight: 700; overflow: hidden; text-overflow: ellipsis;
@@ -239,6 +241,8 @@
   }
   .gantt-daycell-v:hover { background: #eaf3fb; }
   .gantt-daycell-v.today { background: #fff6e0; }
+  .gantt-daycell-v.sunday-bg { background: #fdecec; }
+  .gantt-daycell-v.saturday-bg { background: #eaf1fb; }
   .gantt-daycell-v.invalid {
     background: repeating-linear-gradient(45deg, #f4f4f4, #f4f4f4 4px, #eaeaea 4px, #eaeaea 8px);
     cursor: default;
@@ -487,6 +491,59 @@ function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str == null ? '' : str;
   return div.innerHTML;
+}
+
+/* ---------- Japanese public holidays (calculated, ~1980-2099) ---------- */
+function nthMondayOfMonth(year, month, n) {
+  let count = 0;
+  for (let day = 1; day <= 31; day++) {
+    const dt = new Date(year, month - 1, day);
+    if (dt.getMonth() !== month - 1) break;
+    if (dt.getDay() === 1) { count++; if (count === n) return day; }
+  }
+  return null;
+}
+function vernalEquinoxDay(year) {
+  return Math.floor(20.8431 + 0.242194 * (year - 1980) - Math.floor((year - 1980) / 4));
+}
+function autumnalEquinoxDay(year) {
+  return Math.floor(23.2488 + 0.242194 * (year - 1980) - Math.floor((year - 1980) / 4));
+}
+const holidayCache = {};
+function getJapaneseHolidays(year) {
+  if (holidayCache[year]) return holidayCache[year];
+  const holidays = new Map();
+  const add = (m, d, name) => { if (d) holidays.set(`${year}-${pad(m)}-${pad(d)}`, name); };
+  add(1, 1, '元日');
+  add(1, nthMondayOfMonth(year, 1, 2), '成人の日');
+  add(2, 11, '建国記念の日');
+  add(2, 23, '天皇誕生日');
+  add(3, vernalEquinoxDay(year), '春分の日');
+  add(4, 29, '昭和の日');
+  add(5, 3, '憲法記念日');
+  add(5, 4, 'みどりの日');
+  add(5, 5, 'こどもの日');
+  add(7, nthMondayOfMonth(year, 7, 3), '海の日');
+  add(8, 11, '山の日');
+  add(9, nthMondayOfMonth(year, 9, 3), '敬老の日');
+  add(9, autumnalEquinoxDay(year), '秋分の日');
+  add(10, nthMondayOfMonth(year, 10, 2), 'スポーツの日');
+  add(11, 3, '文化の日');
+  add(11, 23, '勤労感謝の日');
+  for (const [dateStr] of Array.from(holidays.entries())) {
+    const d = new Date(dateStr + 'T00:00:00');
+    if (d.getDay() === 0) {
+      const next = new Date(d);
+      do { next.setDate(next.getDate() + 1); } while (holidays.has(toDateStr(next)));
+      holidays.set(toDateStr(next), '振替休日');
+    }
+  }
+  holidayCache[year] = holidays;
+  return holidays;
+}
+function holidayNameOf(dateStr) {
+  const year = parseInt(dateStr.split('-')[0], 10);
+  return getJapaneseHolidays(year).get(dateStr) || null;
 }
 function resizeImage(file, maxDim = 1280, quality = 0.75) {
   return new Promise((resolve) => {
@@ -1218,7 +1275,10 @@ function renderScheduleMonth() {
   const grid = document.getElementById('scheduleCalendarGrid');
   if (!grid) return;
   const weekdayNames = ['日', '月', '火', '水', '木', '金', '土'];
-  let html = weekdayNames.map(w => `<div class="cal-weekday">${w}</div>`).join('');
+  let html = weekdayNames.map((w, i) => {
+    const cls = i === 0 ? ' sunday-color' : i === 6 ? ' saturday-color' : '';
+    return `<div class="cal-weekday${cls}">${w}</div>`;
+  }).join('');
 
   const firstDay = new Date(calYear, calMonth - 1, 1);
   const daysInMonth = new Date(calYear, calMonth, 0).getDate();
@@ -1250,7 +1310,13 @@ function renderScheduleMonth() {
     const classes = ['cal-day'];
     if (dateStr === today) classes.push('today');
     if (dateStr === selectedScheduleDate) classes.push('selected');
-    html += `<div class="${classes.join(' ')}" data-date="${dateStr}"><div class="cal-daynum">${d}</div>${shown}</div>`;
+    const holidayName = holidayNameOf(dateStr);
+    const dow = colIndex;
+    let daynumCls = 'cal-daynum';
+    if (holidayName || dow === 0) daynumCls += ' sunday-color';
+    else if (dow === 6) daynumCls += ' saturday-color';
+    const titleAttr = holidayName ? ` title="${escapeHtml(holidayName)}"` : '';
+    html += `<div class="${classes.join(' ')}" data-date="${dateStr}"><div class="${daynumCls}"${titleAttr}>${d}</div>${shown}</div>`;
   }
   grid.innerHTML = html;
   grid.querySelectorAll('.cal-day:not(.empty)').forEach(cell => {
@@ -1420,7 +1486,13 @@ function buildYearGanttVertical(year) {
       } else {
         const dateStr = `${year}-${pad(mi.m)}-${pad(d)}`;
         const cls = ['gantt-daycell-v'];
-        if (dateStr === today) cls.push('today');
+        if (dateStr === today) {
+          cls.push('today');
+        } else {
+          const dow = new Date(year, mi.m - 1, d).getDay();
+          if (holidayNameOf(dateStr) || dow === 0) cls.push('sunday-bg');
+          else if (dow === 6) cls.push('saturday-bg');
+        }
         html += `<div class="${cls.join(' ')}" style="grid-column:${mi.startCol} / span ${mi.trackCount};grid-row:${d + 1};" data-date="${dateStr}"></div>`;
       }
     }
