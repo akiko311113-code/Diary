@@ -530,6 +530,20 @@ function getJapaneseHolidays(year) {
   add(10, nthMondayOfMonth(year, 10, 2), 'スポーツの日');
   add(11, 3, '文化の日');
   add(11, 23, '勤労感謝の日');
+
+  /* 国民の休日: a weekday sandwiched between two holidays (e.g. Sep 22
+     between 敬老の日 and 秋分の日) becomes a holiday itself. */
+  for (const dateStr of Array.from(holidays.keys())) {
+    const d = new Date(dateStr + 'T00:00:00');
+    const next = new Date(d); next.setDate(d.getDate() + 1);
+    const nextStr = toDateStr(next);
+    if (holidays.has(nextStr)) continue;
+    const afterNext = new Date(d); afterNext.setDate(d.getDate() + 2);
+    if (holidays.has(toDateStr(afterNext)) && next.getDay() !== 0) {
+      holidays.set(nextStr, '国民の休日');
+    }
+  }
+
   for (const [dateStr] of Array.from(holidays.entries())) {
     const d = new Date(dateStr + 'T00:00:00');
     if (d.getDay() === 0) {
