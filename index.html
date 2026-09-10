@@ -134,6 +134,8 @@
 
   .entry-list { display: flex; flex-direction: column; gap: 12px; }
   .companion-block { margin-top: 16px; padding-top: 14px; border-top: 2px dashed var(--border-garden); }
+  .companion-block.schedule-block { border-top-color: var(--border-schedule); }
+  .companion-block.schedule-block .companion-label { color: var(--accent-schedule-dark); }
   .companion-label { font-size: 0.75rem; font-weight: 700; color: var(--accent-garden-dark); margin-bottom: 6px; }
   .entry-card {
     background: var(--card); border: 2px solid var(--border); border-radius: 16px;
@@ -1001,20 +1003,25 @@ async function buildGroupedCards(taggedEntries, opts = {}) {
   for (const date of order) {
     const group = byDate.get(date);
     let gardenLeft = group.garden.slice();
+    let dateCards = [];
     if (group.diary.length) {
       for (const d of group.diary) {
         if (gardenLeft.length) {
-          cards.push(await buildCombinedCard(d, gardenLeft, opts));
+          dateCards.push(await buildCombinedCard(d, gardenLeft, opts));
           gardenLeft = [];
         } else {
-          cards.push(await buildEntryCard(d, 'diary', opts));
+          dateCards.push(await buildEntryCard(d, 'diary', opts));
         }
       }
     } else if (gardenLeft.length > 1) {
-      cards.push(await buildGardenOnlyCard(gardenLeft, opts));
+      dateCards.push(await buildGardenOnlyCard(gardenLeft, opts));
     } else {
-      for (const g of gardenLeft) cards.push(await buildEntryCard(g, 'garden', opts));
+      for (const g of gardenLeft) dateCards.push(await buildEntryCard(g, 'garden', opts));
     }
+    if (opts.attachSchedule) {
+      for (const c of dateCards) appendScheduleCompanions(c, date);
+    }
+    cards.push(...dateCards);
   }
   return cards;
 }
@@ -1036,6 +1043,28 @@ function renderCategoryChips(section) {
       render(section);
     });
   });
+}
+
+function appendScheduleCompanions(card, dateStr) {
+  const dayEvents = scheduleEvents.filter(ev => eventSpansDate(ev, dateStr))
+    .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  for (const ev of dayEvents) {
+    const cat = scheduleCategoryOf(ev);
+    const badge = cat ? `<span class="schedule-category-badge" style="background:${cat.bg};color:${cat.text}">${escapeHtml(cat.name)}</span>` : '';
+    const block = document.createElement('div');
+    block.className = 'companion-block schedule-block';
+    block.innerHTML = `
+      <div class="companion-label">🗓️ 同じ日の予定${badge}</div>
+      <div class="entry-title">${escapeHtml(ev.title)}</div>
+      ${ev.note ? `<div class="entry-body">${escapeHtml(ev.note)}</div>` : ''}
+    `;
+    block.addEventListener('click', (e) => {
+      e.stopPropagation();
+      switchTab('schedule');
+      jumpToScheduleMonthDay(ev.date);
+    });
+    card.appendChild(block);
+  }
 }
 
 async function render(section) {
@@ -1065,7 +1094,8 @@ async function render(section) {
   } else {
     tagged = filtered.map(e => ({ ...e, section: 'garden' }));
   }
-  for (const card of await buildGroupedCards(tagged)) listEl.appendChild(card);
+  const groupOpts = section === 'diary' ? { attachSchedule: true } : {};
+  for (const card of await buildGroupedCards(tagged, groupOpts)) listEl.appendChild(card);
 }
 
 /* ---------- On-this-day (up to 5 years back) ---------- */
