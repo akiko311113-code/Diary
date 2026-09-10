@@ -1255,8 +1255,8 @@ const SCHEDULE_CATEGORIES = [
   { id: 'cat1', name: '小豆島', bg: '#2bb3a3', text: '#ffffff' },
   { id: 'cat3', name: '旅行・お出かけ', bg: '#b072e0', text: '#ffffff' },
   { id: 'cat4', name: '来客訪問', bg: '#d64545', text: '#ffffff' },
-  { id: 'cat2', name: '理美容', bg: '#f39c3d', text: '#ffffff' },
-  { id: 'cat5', name: 'カテゴリ5', bg: '#4a5fc1', text: '#ffffff' }
+  { id: 'cat2', name: '帰岡', bg: '#f39c3d', text: '#ffffff' },
+  { id: 'cat5', name: '理美容・コーヒー豆', bg: '#4a5fc1', text: '#ffffff' }
 ];
 function scheduleCategoryOf(ev) { return SCHEDULE_CATEGORIES.find(c => c.id === ev.categoryId) || null; }
 
@@ -1467,7 +1467,7 @@ function buildYearGanttVertical(year) {
     const daysInMonth = new Date(year, m, 0).getDate();
     const monthStart = `${year}-${pad(m)}-01`;
     const monthEnd = `${year}-${pad(m)}-${pad(daysInMonth)}`;
-    const yearViewCategoryIds = new Set(SCHEDULE_CATEGORIES.slice(0, 3).map(c => c.id));
+    const yearViewCategoryIds = new Set(SCHEDULE_CATEGORIES.slice(0, 4).map(c => c.id));
     const events = scheduleEvents
       .filter(ev => yearViewCategoryIds.has(ev.categoryId) && eventEndDate(ev) >= monthStart && ev.date <= monthEnd)
       .sort((a, b) => a.date.localeCompare(b.date));
