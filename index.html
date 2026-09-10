@@ -219,38 +219,33 @@
   }
 
   .year-gantt-wrap { overflow-x: auto; margin-bottom: 20px; -webkit-overflow-scrolling: touch; border: 2px solid var(--border-schedule); border-radius: 12px; }
-  .year-gantt { display: flex; flex-direction: column; min-width: 1900px; background: #fff; }
-  .gantt-header-row, .gantt-month-row {
-    display: grid; grid-template-columns: 56px repeat(31, minmax(56px, 1fr));
+  .year-gantt-v { display: grid; grid-template-rows: 34px repeat(31, 24px); background: #fff; }
+  .gantt-daylabel-corner {
+    position: sticky; left: 0; z-index: 2; background: #fff;
+    border-right: 2px solid var(--border-schedule); border-bottom: 2px solid var(--border-schedule);
   }
-  .gantt-corner {
-    position: sticky; left: 0; z-index: 2; background: #fff; border-right: 2px solid var(--border-schedule);
-    border-bottom: 2px solid var(--border-schedule);
+  .gantt-month-header {
+    background: #fff; display: flex; align-items: center; justify-content: center;
+    font-size: 0.78rem; font-weight: 800; color: var(--accent-schedule-dark); cursor: pointer;
+    border-bottom: 2px solid var(--border-schedule); border-right: 1px solid var(--border-schedule);
   }
-  .gantt-daynum {
-    text-align: center; font-size: 0.68rem; font-weight: 700; color: var(--sub); padding: 6px 0;
-    border-bottom: 2px solid var(--border-schedule);
+  .gantt-daylabel {
+    position: sticky; left: 0; z-index: 1; background: #fff; display: flex; align-items: center; justify-content: center;
+    font-size: 0.65rem; font-weight: 700; color: var(--sub);
+    border-right: 2px solid var(--border-schedule); border-bottom: 1px solid var(--border-schedule);
   }
-  .gantt-month-row { border-top: 1px solid var(--border-schedule); }
-  .gantt-month-label {
-    display: flex; align-items: center; justify-content: center; font-size: 0.78rem; font-weight: 800;
-    color: var(--accent-schedule-dark); background: #fff; cursor: pointer;
-    border-right: 2px solid var(--border-schedule); position: sticky; left: 0; z-index: 1;
+  .gantt-daycell-v {
+    border-right: 1px solid var(--border-schedule); border-bottom: 1px solid var(--border-schedule); cursor: pointer;
   }
-  .gantt-daycell {
-    border-right: 1px solid var(--border-schedule); border-bottom: 1px solid var(--border-schedule);
-    min-height: 24px; cursor: pointer;
-  }
-  .gantt-daycell:hover { background: #eaf3fb; }
-  .gantt-daycell.today { background: #fff6e0; }
-  .gantt-daycell.invalid {
+  .gantt-daycell-v:hover { background: #eaf3fb; }
+  .gantt-daycell-v.today { background: #fff6e0; }
+  .gantt-daycell-v.invalid {
     background: repeating-linear-gradient(45deg, #f4f4f4, #f4f4f4 4px, #eaeaea 4px, #eaeaea 8px);
-    cursor: default; border-bottom: 1px solid var(--border-schedule);
+    cursor: default;
   }
-  .gantt-bar {
-    margin: 1px 2px; border-radius: 4px; font-size: 0.68rem; font-weight: 700; padding: 1px 5px;
+  .gantt-bar-v {
+    margin: 1px 2px; border-radius: 4px; font-size: 0.66rem; font-weight: 700; padding: 2px 5px;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer;
-    display: flex; align-items: center;
   }
   .schedule-form-date { font-weight: 800; color: var(--accent-schedule-dark); margin-bottom: 8px; }
   #scheduleEntryForm { border-color: var(--border-schedule); }
@@ -1187,9 +1182,9 @@ let selectedScheduleDate = null;
 
 const SCHEDULE_CATEGORIES = [
   { id: 'cat1', name: '小豆島', bg: '#2bb3a3', text: '#ffffff' },
-  { id: 'cat2', name: '理美容', bg: '#f39c3d', text: '#ffffff' },
   { id: 'cat3', name: '旅行・お出かけ', bg: '#b072e0', text: '#ffffff' },
   { id: 'cat4', name: '来客訪問', bg: '#d64545', text: '#ffffff' },
+  { id: 'cat2', name: '理美容', bg: '#f39c3d', text: '#ffffff' },
   { id: 'cat5', name: 'カテゴリ5', bg: '#4a5fc1', text: '#ffffff' }
 ];
 function scheduleCategoryOf(ev) { return SCHEDULE_CATEGORIES.find(c => c.id === ev.categoryId) || null; }
@@ -1381,65 +1376,65 @@ function jumpToScheduleMonthDay(dateStr) {
   openScheduleDay(dateStr);
 }
 
-function buildGanttHeaderRow() {
-  let html = '<div class="gantt-corner"></div>';
-  for (let d = 1; d <= 31; d++) html += `<div class="gantt-daynum">${d}</div>`;
-  return `<div class="gantt-header-row">${html}</div>`;
-}
-
-function buildGanttMonthRow(year, month) {
-  const daysInMonth = new Date(year, month, 0).getDate();
-  const monthStart = `${year}-${pad(month)}-01`;
-  const monthEnd = `${year}-${pad(month)}-${pad(daysInMonth)}`;
+/* Year view: rows = day-of-month (1-31), columns = months (Jan-Dec).
+   Each month occupies 1 or more sub-columns depending on how many
+   events overlap within it, so overlapping events sit side by side. */
+function buildYearGanttVertical(year) {
   const today = todayStr();
+  const monthsInfo = [];
+  let cursor = 2; // column 1 is the day-of-month label
+  for (let m = 1; m <= 12; m++) {
+    const daysInMonth = new Date(year, m, 0).getDate();
+    const monthStart = `${year}-${pad(m)}-01`;
+    const monthEnd = `${year}-${pad(m)}-${pad(daysInMonth)}`;
+    const events = scheduleEvents
+      .filter(ev => eventEndDate(ev) >= monthStart && ev.date <= monthEnd)
+      .sort((a, b) => a.date.localeCompare(b.date));
+    const trackEnds = [];
+    const placed = events.map(ev => {
+      const dispStart = ev.date < monthStart ? monthStart : ev.date;
+      const dispEnd = eventEndDate(ev) > monthEnd ? monthEnd : eventEndDate(ev);
+      let track = trackEnds.findIndex(end => end < dispStart);
+      if (track === -1) { track = trackEnds.length; trackEnds.push(dispEnd); }
+      else trackEnds[track] = dispEnd;
+      return { ev, dispStart, dispEnd, track };
+    });
+    const trackCount = Math.max(1, trackEnds.length);
+    monthsInfo.push({ m, daysInMonth, placed, trackCount, startCol: cursor });
+    cursor += trackCount;
+  }
+  const totalSubCols = cursor - 2;
 
-  const events = scheduleEvents
-    .filter(ev => eventEndDate(ev) >= monthStart && ev.date <= monthEnd)
-    .sort((a, b) => a.date.localeCompare(b.date));
-
-  const trackEnds = [];
-  const placed = events.map(ev => {
-    const dispStart = ev.date < monthStart ? monthStart : ev.date;
-    const dispEnd = eventEndDate(ev) > monthEnd ? monthEnd : eventEndDate(ev);
-    let track = trackEnds.findIndex(end => end < dispStart);
-    if (track === -1) { track = trackEnds.length; trackEnds.push(dispEnd); }
-    else trackEnds[track] = dispEnd;
-    return { ev, dispStart, dispEnd, track };
-  });
-  const trackCount = Math.max(1, trackEnds.length);
-
-  let dayCellsHtml = '';
+  let html = '<div class="gantt-daylabel-corner" style="grid-column:1;grid-row:1;"></div>';
+  for (const mi of monthsInfo) {
+    html += `<div class="gantt-month-header" style="grid-column:${mi.startCol} / span ${mi.trackCount};grid-row:1;" data-year="${year}" data-month="${mi.m}">${mi.m}月</div>`;
+  }
   for (let d = 1; d <= 31; d++) {
-    const col = d + 1;
-    if (d > daysInMonth) {
-      dayCellsHtml += `<div class="gantt-daycell invalid" style="grid-column:${col};grid-row:1;"></div>`;
-    } else {
-      const dateStr = `${year}-${pad(month)}-${pad(d)}`;
-      const cls = ['gantt-daycell'];
-      if (dateStr === today) cls.push('today');
-      dayCellsHtml += `<div class="${cls.join(' ')}" style="grid-column:${col};grid-row:1;" data-date="${dateStr}"></div>`;
+    html += `<div class="gantt-daylabel" style="grid-column:1;grid-row:${d + 1};">${d}</div>`;
+  }
+  for (const mi of monthsInfo) {
+    for (let d = 1; d <= 31; d++) {
+      if (d > mi.daysInMonth) {
+        html += `<div class="gantt-daycell-v invalid" style="grid-column:${mi.startCol} / span ${mi.trackCount};grid-row:${d + 1};"></div>`;
+      } else {
+        const dateStr = `${year}-${pad(mi.m)}-${pad(d)}`;
+        const cls = ['gantt-daycell-v'];
+        if (dateStr === today) cls.push('today');
+        html += `<div class="${cls.join(' ')}" style="grid-column:${mi.startCol} / span ${mi.trackCount};grid-row:${d + 1};" data-date="${dateStr}"></div>`;
+      }
+    }
+    for (const { ev, dispStart, dispEnd, track } of mi.placed) {
+      const startDay = parseInt(dispStart.split('-')[2], 10);
+      const endDay = parseInt(dispEnd.split('-')[2], 10);
+      const cat = scheduleCategoryOf(ev);
+      const bg = cat ? cat.bg : 'var(--accent-schedule)';
+      const color = cat ? cat.text : '#ffffff';
+      html += `<div class="gantt-bar-v" data-date="${ev.date}"
+        style="grid-column:${mi.startCol + track};grid-row:${startDay + 1} / span ${endDay - startDay + 1};background:${bg};color:${color};"
+        title="${escapeHtml(ev.title)}">${escapeHtml(ev.title)}</div>`;
     }
   }
-
-  const barsHtml = placed.map(({ ev, dispStart, dispEnd, track }) => {
-    const startDay = parseInt(dispStart.split('-')[2], 10);
-    const endDay = parseInt(dispEnd.split('-')[2], 10);
-    const span = endDay - startDay + 1;
-    const cat = scheduleCategoryOf(ev);
-    const bg = cat ? cat.bg : 'var(--accent-schedule)';
-    const color = cat ? cat.text : '#ffffff';
-    return `<div class="gantt-bar" data-date="${ev.date}"
-      style="grid-column:${startDay + 1} / span ${span}; grid-row:${2 + track}; background:${bg}; color:${color};"
-      title="${escapeHtml(ev.title)}">${escapeHtml(ev.title)}</div>`;
-  }).join('');
-
-  return `
-    <div class="gantt-month-row" style="grid-template-rows: repeat(${1 + trackCount}, minmax(22px, auto));">
-      <div class="gantt-month-label" style="grid-row: 1 / span ${1 + trackCount};" data-year="${year}" data-month="${month}">${month}月</div>
-      ${dayCellsHtml}
-      ${barsHtml}
-    </div>
-  `;
+  return { html, totalSubCols };
 }
 
 function showScheduleYearReview() {
@@ -1447,18 +1442,18 @@ function showScheduleYearReview() {
   if (!yearEl) return;
   const year = parseInt(yearEl.value || calYear, 10);
   const container = document.getElementById('scheduleYearResult');
-  const rows = Array.from({ length: 12 }, (_, i) => buildGanttMonthRow(year, i + 1)).join('');
-  container.innerHTML = `<div class="year-gantt-wrap"><div class="year-gantt">${buildGanttHeaderRow()}${rows}</div></div>`;
-  container.querySelectorAll('.gantt-daycell:not(.invalid)').forEach(cell => {
+  const { html, totalSubCols } = buildYearGanttVertical(year);
+  container.innerHTML = `<div class="year-gantt-wrap"><div class="year-gantt-v" style="grid-template-columns: 34px repeat(${totalSubCols}, minmax(82px, 1fr));">${html}</div></div>`;
+  container.querySelectorAll('.gantt-daycell-v:not(.invalid)').forEach(cell => {
     cell.addEventListener('click', () => jumpToScheduleMonthDay(cell.dataset.date));
   });
-  container.querySelectorAll('.gantt-bar').forEach(bar => {
+  container.querySelectorAll('.gantt-bar-v').forEach(bar => {
     bar.addEventListener('click', (e) => {
       e.stopPropagation();
       jumpToScheduleMonthDay(bar.dataset.date);
     });
   });
-  container.querySelectorAll('.gantt-month-label').forEach(label => {
+  container.querySelectorAll('.gantt-month-header').forEach(label => {
     label.addEventListener('click', () => switchToScheduleMonthView(parseInt(label.dataset.year, 10), parseInt(label.dataset.month, 10)));
   });
 }
