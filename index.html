@@ -134,8 +134,6 @@
 
   .entry-list { display: flex; flex-direction: column; gap: 12px; }
   .companion-block { margin-top: 16px; padding-top: 14px; border-top: 2px dashed var(--border-garden); }
-  .companion-block.schedule-block { border-top-color: var(--border-schedule); }
-  .companion-block.schedule-block .companion-label { color: var(--accent-schedule-dark); }
   .companion-label { font-size: 0.75rem; font-weight: 700; color: var(--accent-garden-dark); margin-bottom: 6px; }
   .entry-card {
     background: var(--card); border: 2px solid var(--border); border-radius: 16px;
@@ -851,138 +849,76 @@ async function buildEntryCard(entry, section, opts = {}) {
   return card;
 }
 
-/* One card holding two or more garden entries that share the same date (no diary entry that day) */
-async function buildGardenOnlyCard(gardenList, opts = {}) {
+/* One card holding every diary/garden entry that shares a date — any
+   combination of multiple diary entries and/or multiple garden entries. */
+async function buildDayCard(diaryList, gardenList, opts = {}) {
   const showActions = opts.showActions !== false;
   const card = document.createElement('div');
   card.className = 'entry-card';
-  card.dataset.section = 'garden';
+  card.dataset.section = diaryList.length ? 'diary' : 'garden';
+  const primaryDate = (diaryList[0] || gardenList[0]).date;
+  const icon = diaryList.length ? '📔' : '🌱';
 
-  const photosMap = {};
-  const blocksHtml = await Promise.all(gardenList.map(async (g, idx) => {
-    const gPhotos = getPhotosForEntry(`garden_${g.id}`);
-    photosMap[g.id] = gPhotos;
-    const gPhotosHtml = gPhotos.length
-      ? `<div class="photo-strip">${gPhotos.map((p, i) => `<img data-idx="${i}" class="thumb garden-thumb" data-garden-id="${g.id}" src="${p.dataUrl}">`).join('')}</div>`
-      : '';
-    return `
-      <div class="${idx > 0 ? 'companion-block' : ''}">
-        ${g.title ? `<div class="entry-title">${escapeHtml(g.title)}${g.category ? `<span class="category-badge">${escapeHtml(g.category)}</span>` : ''}</div>` : (g.category ? `<span class="category-badge">${escapeHtml(g.category)}</span>` : '')}
-        <div class="entry-body">${escapeHtml(g.body)}</div>
-        ${gPhotosHtml}
-        ${showActions ? `
-        <div class="entry-actions">
-          <button class="btn-secondary garden-edit-btn" data-garden-id="${g.id}">編集</button>
-          <button class="btn-danger garden-delete-btn" data-garden-id="${g.id}">削除</button>
-        </div>` : ''}
-      </div>
-    `;
-  }));
-
-  card.innerHTML = `
-    <div class="entry-date">🌱 ${formatDateJp(gardenList[0].date)}</div>
-    ${blocksHtml.join('')}
-  `;
-
-  card.querySelectorAll('.garden-thumb').forEach(img => {
-    img.addEventListener('click', (e) => {
-      e.stopPropagation();
-      openLightbox(photosMap[img.dataset.gardenId], parseInt(img.dataset.idx, 10));
-    });
-  });
-  if (showActions) {
-    for (const g of gardenList) {
-      card.querySelector(`.garden-edit-btn[data-garden-id="${g.id}"]`).addEventListener('click', (e) => {
-        e.stopPropagation(); switchTab('garden'); openForm('garden', g);
-      });
-      card.querySelector(`.garden-delete-btn[data-garden-id="${g.id}"]`).addEventListener('click', (e) => {
-        e.stopPropagation(); deleteEntry('garden', g.id);
-      });
-    }
+  const blocks = [];
+  let first = true;
+  for (const d of diaryList) {
+    blocks.push({ kind: 'diary', entry: d, label: first ? '' : '📔 同じ日の日記' });
+    first = false;
   }
-  card.addEventListener('click', (e) => {
-    if (e.target.closest('.entry-actions') || e.target.closest('.thumb')) return;
-    card.classList.toggle('expanded');
-  });
-  return card;
-}
+  for (const g of gardenList) {
+    blocks.push({ kind: 'garden', entry: g, label: first ? '' : '🌱 同じ日の園芸記録' });
+    first = false;
+  }
 
-/* One card holding a diary entry plus any garden entries on the same date */
-async function buildCombinedCard(diaryEntry, gardenCompanions, opts = {}) {
-  const showActions = opts.showActions !== false;
-  const card = document.createElement('div');
-  card.className = 'entry-card';
-  card.dataset.section = 'diary';
-
-  const diaryPhotos = getPhotosForEntry(`diary_${diaryEntry.id}`);
-  const diaryPhotosHtml = diaryPhotos.length
-    ? `<div class="photo-strip">${diaryPhotos.map((p, i) => `<img data-idx="${i}" class="thumb diary-thumb" src="${p.dataUrl}">`).join('')}</div>`
-    : '';
-
-  const gardenPhotosMap = {};
-  const gardenBlocksHtml = gardenCompanions.map(g => {
-    const gPhotos = getPhotosForEntry(`garden_${g.id}`);
-    gardenPhotosMap[g.id] = gPhotos;
-    const gPhotosHtml = gPhotos.length
-      ? `<div class="photo-strip">${gPhotos.map((p, i) => `<img data-idx="${i}" class="thumb garden-thumb" data-garden-id="${g.id}" src="${p.dataUrl}">`).join('')}</div>`
+  const photosByKey = {};
+  const blocksHtml = blocks.map(b => {
+    const photos = getPhotosForEntry(`${b.kind}_${b.entry.id}`);
+    photosByKey[`${b.kind}-${b.entry.id}`] = photos;
+    const photosHtml = photos.length
+      ? `<div class="photo-strip">${photos.map((p, i) => `<img data-idx="${i}" class="thumb" data-owner="${b.kind}-${b.entry.id}" src="${p.dataUrl}">`).join('')}</div>`
       : '';
+    const categoryBadge = b.kind === 'garden' && b.entry.category ? `<span class="category-badge">${escapeHtml(b.entry.category)}</span>` : '';
+    const wrapClass = b.label ? 'companion-block' : '';
     return `
-      <div class="companion-block">
-        <div class="companion-label">🌱 同じ日の園芸記録${g.category ? `<span class="category-badge">${escapeHtml(g.category)}</span>` : ''}</div>
-        ${g.title ? `<div class="entry-title">${escapeHtml(g.title)}</div>` : ''}
-        <div class="entry-body">${escapeHtml(g.body)}</div>
-        ${gPhotosHtml}
+      <div class="${wrapClass}">
+        ${b.label ? `<div class="companion-label">${b.label}${categoryBadge}</div>` : ''}
+        ${b.entry.title ? `<div class="entry-title">${escapeHtml(b.entry.title)}${!b.label ? categoryBadge : ''}</div>` : (!b.label ? categoryBadge : '')}
+        <div class="entry-body">${escapeHtml(b.entry.body)}</div>
+        ${photosHtml}
         ${showActions ? `
         <div class="entry-actions">
-          <button class="btn-secondary garden-edit-btn" data-garden-id="${g.id}">編集</button>
-          <button class="btn-danger garden-delete-btn" data-garden-id="${g.id}">削除</button>
+          <button class="btn-secondary edit-btn" data-kind="${b.kind}" data-id="${b.entry.id}">編集</button>
+          <button class="btn-danger delete-btn" data-kind="${b.kind}" data-id="${b.entry.id}">削除</button>
         </div>` : ''}
       </div>
     `;
   }).join('');
 
-  card.innerHTML = `
-    <div class="entry-date">📔 ${formatDateJp(diaryEntry.date)}</div>
-    ${diaryEntry.title ? `<div class="entry-title">${escapeHtml(diaryEntry.title)}</div>` : ''}
-    <div class="entry-body">${escapeHtml(diaryEntry.body)}</div>
-    ${diaryPhotosHtml}
-    ${showActions ? `
-    <div class="entry-actions">
-      <button class="btn-secondary diary-edit-btn">編集</button>
-      <button class="btn-danger diary-delete-btn">削除</button>
-    </div>` : ''}
-    ${gardenBlocksHtml}
-  `;
+  card.innerHTML = `<div class="entry-date">${icon} ${formatDateJp(primaryDate)}</div>${blocksHtml}`;
 
-  card.querySelectorAll('.diary-thumb').forEach(img => {
+  card.querySelectorAll('.thumb').forEach(img => {
     img.addEventListener('click', (e) => {
       e.stopPropagation();
-      openLightbox(diaryPhotos, parseInt(img.dataset.idx, 10));
-    });
-  });
-  card.querySelectorAll('.garden-thumb').forEach(img => {
-    img.addEventListener('click', (e) => {
-      e.stopPropagation();
-      openLightbox(gardenPhotosMap[img.dataset.gardenId], parseInt(img.dataset.idx, 10));
+      openLightbox(photosByKey[img.dataset.owner], parseInt(img.dataset.idx, 10));
     });
   });
   if (showActions) {
-    card.querySelector('.diary-edit-btn').addEventListener('click', (e) => {
-      e.stopPropagation(); switchTab('diary'); openForm('diary', diaryEntry);
-    });
-    card.querySelector('.diary-delete-btn').addEventListener('click', (e) => {
-      e.stopPropagation(); deleteEntry('diary', diaryEntry.id);
-    });
-    for (const g of gardenCompanions) {
-      card.querySelector(`.garden-edit-btn[data-garden-id="${g.id}"]`).addEventListener('click', (e) => {
-        e.stopPropagation(); switchTab('garden'); openForm('garden', g);
+    card.querySelectorAll('.edit-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const kind = btn.dataset.kind, id = btn.dataset.id;
+        const entry = (kind === 'diary' ? diaryList : gardenList).find(x => x.id === id);
+        switchTab(kind);
+        openForm(kind, entry);
       });
-      card.querySelector(`.garden-delete-btn[data-garden-id="${g.id}"]`).addEventListener('click', (e) => {
-        e.stopPropagation(); deleteEntry('garden', g.id);
+    });
+    card.querySelectorAll('.delete-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        deleteEntry(btn.dataset.kind, btn.dataset.id);
       });
-    }
+    });
   }
-
   card.addEventListener('click', (e) => {
     if (e.target.closest('.entry-actions') || e.target.closest('.thumb')) return;
     card.classList.toggle('expanded');
@@ -991,7 +927,7 @@ async function buildCombinedCard(diaryEntry, gardenCompanions, opts = {}) {
 }
 
 /* Groups a chronological list of tagged entries (diary+garden) by date,
-   merging same-date diary+garden pairs into one combined card. */
+   merging every entry that shares a date into one card. */
 async function buildGroupedCards(taggedEntries, opts = {}) {
   const order = [];
   const byDate = new Map();
@@ -1002,26 +938,15 @@ async function buildGroupedCards(taggedEntries, opts = {}) {
   const cards = [];
   for (const date of order) {
     const group = byDate.get(date);
-    let gardenLeft = group.garden.slice();
-    let dateCards = [];
-    if (group.diary.length) {
-      for (const d of group.diary) {
-        if (gardenLeft.length) {
-          dateCards.push(await buildCombinedCard(d, gardenLeft, opts));
-          gardenLeft = [];
-        } else {
-          dateCards.push(await buildEntryCard(d, 'diary', opts));
-        }
-      }
-    } else if (gardenLeft.length > 1) {
-      dateCards.push(await buildGardenOnlyCard(gardenLeft, opts));
+    const diaryList = group.diary.slice().sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+    const gardenList = group.garden.slice().sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+    if (diaryList.length + gardenList.length > 1) {
+      cards.push(await buildDayCard(diaryList, gardenList, opts));
+    } else if (diaryList.length) {
+      cards.push(await buildEntryCard(diaryList[0], 'diary', opts));
     } else {
-      for (const g of gardenLeft) dateCards.push(await buildEntryCard(g, 'garden', opts));
+      cards.push(await buildEntryCard(gardenList[0], 'garden', opts));
     }
-    if (opts.attachSchedule) {
-      for (const c of dateCards) appendScheduleCompanions(c, date);
-    }
-    cards.push(...dateCards);
   }
   return cards;
 }
@@ -1043,28 +968,6 @@ function renderCategoryChips(section) {
       render(section);
     });
   });
-}
-
-function appendScheduleCompanions(card, dateStr) {
-  const dayEvents = scheduleEvents.filter(ev => eventSpansDate(ev, dateStr))
-    .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-  for (const ev of dayEvents) {
-    const cat = scheduleCategoryOf(ev);
-    const badge = cat ? `<span class="schedule-category-badge" style="background:${cat.bg};color:${cat.text}">${escapeHtml(cat.name)}</span>` : '';
-    const block = document.createElement('div');
-    block.className = 'companion-block schedule-block';
-    block.innerHTML = `
-      <div class="companion-label">🗓️ 同じ日の予定${badge}</div>
-      <div class="entry-title">${escapeHtml(ev.title)}</div>
-      ${ev.note ? `<div class="entry-body">${escapeHtml(ev.note)}</div>` : ''}
-    `;
-    block.addEventListener('click', (e) => {
-      e.stopPropagation();
-      switchTab('schedule');
-      jumpToScheduleMonthDay(ev.date);
-    });
-    card.appendChild(block);
-  }
 }
 
 async function render(section) {
@@ -1094,8 +997,7 @@ async function render(section) {
   } else {
     tagged = filtered.map(e => ({ ...e, section: 'garden' }));
   }
-  const groupOpts = section === 'diary' ? { attachSchedule: true } : {};
-  for (const card of await buildGroupedCards(tagged, groupOpts)) listEl.appendChild(card);
+  for (const card of await buildGroupedCards(tagged)) listEl.appendChild(card);
 }
 
 /* ---------- On-this-day (up to 5 years back) ---------- */
